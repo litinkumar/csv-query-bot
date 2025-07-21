@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +15,39 @@ interface Message {
   timestamp: Date;
 }
 
+// Program name mappings and aliases
+const PROGRAM_ALIASES = {
+  'asg primary path': 'ASG Primary Path',
+  'asg primary': 'ASG Primary Path',
+  'asg': 'ASG Primary Path',
+  'lwp path': 'LPW Path',
+  'lwp': 'LPW Path',
+  'learning path': 'LPW Path',
+  'primary path': 'ASG Primary Path'
+};
+
+// Month to quarter mapping
+const MONTH_TO_QUARTER = {
+  'january': 'Q1', 'jan': 'Q1',
+  'february': 'Q1', 'feb': 'Q1',
+  'march': 'Q1', 'mar': 'Q1',
+  'april': 'Q2', 'apr': 'Q2',
+  'may': 'Q2',
+  'june': 'Q2', 'jun': 'Q2',
+  'july': 'Q3', 'jul': 'Q3',
+  'august': 'Q3', 'aug': 'Q3',
+  'september': 'Q3', 'sep': 'Q3', 'sept': 'Q3',
+  'october': 'Q4', 'oct': 'Q4',
+  'november': 'Q4', 'nov': 'Q4',
+  'december': 'Q4', 'dec': 'Q4'
+};
+
 export default function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'bot',
-      content: 'Hi! I can help you analyze your onboarding campaign performance. Try asking about lessons, programs, or performance metrics like:\n\n• "How is the Performance Max Campaign lesson performing this quarter?"\n• "Compare ASG Primary Path vs LPW Path programs"\n• "Show me YouTube lesson performance by region"\n• "Which lessons perform best in Europe?"',
+      content: 'Hi! I can help you analyze your onboarding program performance. Try asking about:\n\n• "Compare ASG Primary Path with LPW Path programs"\n• "How is ASG Primary Path doing in Q3?"\n• "Show me Product Feed Optimisation performance"\n• "List all available programs"\n\nWhat would you like to analyze?',
       timestamp: new Date()
     }
   ]);
@@ -29,53 +57,124 @@ export default function ChatBot() {
   const getCurrentQuarter = () => {
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth() + 1; // getMonth() returns 0-11
+    const month = now.getMonth() + 1;
     const quarter = Math.ceil(month / 3);
     return `${year}-Q${quarter}`;
   };
 
-  const fuzzyMatch = (query: string, target: string): boolean => {
-    const queryLower = query.toLowerCase();
-    const targetLower = target.toLowerCase();
+  const extractTimeFilter = (query: string) => {
+    const lowerQuery = query.toLowerCase();
+    console.log('Extracting time filter from:', query);
+    
+    // Check for specific quarters
+    const quarterMatch = lowerQuery.match(/q([1-4])|quarter\s*([1-4])/);
+    if (quarterMatch) {
+      const quarter = quarterMatch[1] || quarterMatch[2];
+      const year = new Date().getFullYear();
+      const timeFilter = `${year}-Q${quarter}`;
+      console.log('Found quarter:', timeFilter);
+      return timeFilter;
+    }
+    
+    // Check for months
+    for (const [month, quarter] of Object.entries(MONTH_TO_QUARTER)) {
+      if (lowerQuery.includes(month)) {
+        const year = new Date().getFullYear();
+        const timeFilter = `${year}-${quarter}`;
+        console.log('Found month mapping to quarter:', timeFilter);
+        return timeFilter;
+      }
+    }
+    
+    // Check for "this quarter" or current time references
+    if (lowerQuery.includes('this quarter') || lowerQuery.includes('current quarter')) {
+      const timeFilter = getCurrentQuarter();
+      console.log('Using current quarter:', timeFilter);
+      return timeFilter;
+    }
+    
+    console.log('No time filter found, using current quarter');
+    return getCurrentQuarter();
+  };
+
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    const s1 = str1.toLowerCase().trim();
+    const s2 = str2.toLowerCase().trim();
     
     // Exact match
-    if (targetLower.includes(queryLower)) return true;
+    if (s1 === s2) return 1.0;
     
-    // Word-based fuzzy matching
-    const queryWords = queryLower.split(/\s+/);
-    const targetWords = targetLower.split(/\s+/);
+    // Check if one contains the other
+    if (s1.includes(s2) || s2.includes(s1)) return 0.8;
     
-    // Check if all query words are found in target
-    return queryWords.every(qWord => 
-      targetWords.some(tWord => tWord.includes(qWord) || qWord.includes(tWord))
-    );
+    // Word-based similarity
+    const words1 = s1.split(/\s+/);
+    const words2 = s2.split(/\s+/);
+    
+    let matchCount = 0;
+    for (const word1 of words1) {
+      for (const word2 of words2) {
+        if (word1 === word2 || word1.includes(word2) || word2.includes(word1)) {
+          matchCount++;
+          break;
+        }
+      }
+    }
+    
+    const similarity = matchCount / Math.max(words1.length, words2.length);
+    return similarity;
   };
 
-  const findMatchingLessons = async (query: string) => {
+  const findBestMatches = async (query: string, type: 'lesson' | 'program') => {
+    const column = type === 'lesson' ? 'lesson_name_1' : 'program_name_1';
     const { data, error } = await supabase
       .from('Onboarding_Dunmmy_Data')
-      .select('lesson_name_1')
-      .not('lesson_name_1', 'is', null);
+      .select(column)
+      .not(column, 'is', null);
     
-    if (error || !data) return [];
+    if (error || !data) {
+      console.error('Error fetching data:', error);
+      return [];
+    }
     
-    const uniqueLessons = [...new Set(data.map(item => item.lesson_name_1).filter(Boolean))];
-    return uniqueLessons.filter(lesson => fuzzyMatch(query, lesson));
-  };
-
-  const findMatchingPrograms = async (query: string) => {
-    const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
-      .select('program_name_1')
-      .not('program_name_1', 'is', null);
+    const uniqueItems = [...new Set(data.map(item => item[column]).filter(Boolean))];
+    console.log(`Available ${type}s:`, uniqueItems);
     
-    if (error || !data) return [];
+    // Clean query - remove stop words and common terms
+    const cleanQuery = query.toLowerCase()
+      .replace(/\b(program|programs|lesson|lessons|performance|how|is|doing|show|me|the|with|vs|versus|compare|comparison)\b/g, '')
+      .trim();
     
-    const uniquePrograms = [...new Set(data.map(item => item.program_name_1).filter(Boolean))];
-    return uniquePrograms.filter(program => fuzzyMatch(query, program));
+    console.log('Clean query:', cleanQuery);
+    
+    // Check aliases first for programs
+    if (type === 'program') {
+      const aliasMatch = PROGRAM_ALIASES[cleanQuery];
+      if (aliasMatch && uniqueItems.includes(aliasMatch)) {
+        console.log('Found alias match:', aliasMatch);
+        return [aliasMatch];
+      }
+    }
+    
+    // Calculate similarity scores
+    const matches = uniqueItems.map(item => ({
+      item,
+      score: calculateSimilarity(cleanQuery, item)
+    }));
+    
+    // Sort by score and filter for reasonable matches
+    const bestMatches = matches
+      .filter(match => match.score > 0.3)
+      .sort((a, b) => b.score - a.score)
+      .map(match => match.item);
+    
+    console.log(`Best ${type} matches:`, bestMatches);
+    return bestMatches;
   };
 
   const analyzeLessonPerformance = async (lessonName: string, timeFilter?: string) => {
+    console.log('Analyzing lesson:', lessonName, 'for period:', timeFilter);
+    
     let query = supabase
       .from('Onboarding_Dunmmy_Data')
       .select('*')
@@ -87,7 +186,15 @@ export default function ChatBot() {
     
     const { data, error } = await query;
     
-    if (error || !data) return null;
+    if (error) {
+      console.error('Error analyzing lesson:', error);
+      return null;
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('No data found for lesson:', lessonName);
+      return null;
+    }
     
     const totalCustomers = data.length;
     const regionBreakdown = data.reduce((acc, record) => {
@@ -119,6 +226,8 @@ export default function ChatBot() {
   };
 
   const analyzeProgramPerformance = async (programName: string, timeFilter?: string) => {
+    console.log('Analyzing program:', programName, 'for period:', timeFilter);
+    
     let query = supabase
       .from('Onboarding_Dunmmy_Data')
       .select('*')
@@ -130,7 +239,15 @@ export default function ChatBot() {
     
     const { data, error } = await query;
     
-    if (error || !data) return null;
+    if (error) {
+      console.error('Error analyzing program:', error);
+      return null;
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('No data found for program:', programName);
+      return null;
+    }
     
     const totalCustomers = data.length;
     const lessonBreakdown = data.reduce((acc, record) => {
@@ -155,12 +272,17 @@ export default function ChatBot() {
   };
 
   const comparePrograms = async (program1: string, program2: string, timeFilter?: string) => {
+    console.log('Comparing programs:', program1, 'vs', program2);
+    
     const [perf1, perf2] = await Promise.all([
       analyzeProgramPerformance(program1, timeFilter),
       analyzeProgramPerformance(program2, timeFilter)
     ]);
     
-    if (!perf1 || !perf2) return null;
+    if (!perf1 || !perf2) {
+      console.log('Failed to get data for comparison');
+      return null;
+    }
     
     const customerDiff = perf1.totalCustomers - perf2.totalCustomers;
     const betterProgram = customerDiff > 0 ? program1 : program2;
@@ -183,7 +305,7 @@ export default function ChatBot() {
     
     let response = `📊 **${type === 'lesson' ? 'Lesson' : 'Program'} Performance Analysis**${timeContext}\n\n`;
     response += `**${performance.lessonName || performance.programName}**\n`;
-    response += `📈 Total Customers Acquired: ${totalCustomers}\n\n`;
+    response += `📈 Total Customers: ${totalCustomers}\n\n`;
     
     if (type === 'program' && performance.lessonBreakdown) {
       response += `**Top Lessons in Program:**\n`;
@@ -248,48 +370,51 @@ export default function ChatBot() {
     try {
       console.log('Processing query:', query);
       const lowerQuery = query.toLowerCase();
-      const currentQuarter = getCurrentQuarter();
+      
+      // Extract time filter
+      const timeFilter = extractTimeFilter(query);
       
       // Check for comparison queries
-      const isComparison = lowerQuery.includes('compare') || lowerQuery.includes('vs') || lowerQuery.includes('versus');
+      const isComparison = lowerQuery.includes('compare') || lowerQuery.includes('vs') || 
+                          lowerQuery.includes('versus') || lowerQuery.includes(' with ');
       
-      // Check for time-based queries
-      const isQuarterQuery = lowerQuery.includes('quarter') || lowerQuery.includes('q1') || 
-                           lowerQuery.includes('q2') || lowerQuery.includes('q3') || lowerQuery.includes('q4');
-      const timeFilter = isQuarterQuery ? currentQuarter : undefined;
-      
-      // Find matching lessons and programs
-      const matchingLessons = await findMatchingLessons(query);
-      const matchingPrograms = await findMatchingPrograms(query);
-      
-      console.log('Matching lessons:', matchingLessons);
-      console.log('Matching programs:', matchingPrograms);
-      
-      if (isComparison && matchingPrograms.length >= 2) {
-        // Program comparison
-        const comparison = await comparePrograms(matchingPrograms[0], matchingPrograms[1], timeFilter);
-        if (comparison) {
-          return formatComparisonResponse(comparison);
+      if (isComparison) {
+        console.log('Detected comparison query');
+        const matchingPrograms = await findBestMatches(query, 'program');
+        
+        if (matchingPrograms.length >= 2) {
+          const comparison = await comparePrograms(matchingPrograms[0], matchingPrograms[1], timeFilter);
+          if (comparison) {
+            return formatComparisonResponse(comparison);
+          }
+        } else if (matchingPrograms.length === 1) {
+          return `🔍 **Found Program:** ${matchingPrograms[0]}\n\nTo compare programs, I need at least two programs. Here are some available programs you can compare with:\n\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ${matchingPrograms[0]} with LPW Path"`;
+        } else {
+          return `🔍 **No matching programs found** for comparison.\n\nAvailable programs:\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ASG Primary Path with LPW Path"`;
         }
       }
       
-      if (matchingLessons.length > 0) {
-        // Lesson performance analysis
-        const performance = await analyzeLessonPerformance(matchingLessons[0], timeFilter);
-        if (performance) {
-          return formatPerformanceResponse(performance, 'lesson');
-        }
-      }
-      
+      // Try to find matching programs first
+      const matchingPrograms = await findBestMatches(query, 'program');
       if (matchingPrograms.length > 0) {
-        // Program performance analysis
+        console.log('Found matching programs:', matchingPrograms);
         const performance = await analyzeProgramPerformance(matchingPrograms[0], timeFilter);
         if (performance) {
           return formatPerformanceResponse(performance, 'program');
         }
       }
       
-      // Handle general queries about totals, lists, etc.
+      // Try to find matching lessons
+      const matchingLessons = await findBestMatches(query, 'lesson');
+      if (matchingLessons.length > 0) {
+        console.log('Found matching lessons:', matchingLessons);
+        const performance = await analyzeLessonPerformance(matchingLessons[0], timeFilter);
+        if (performance) {
+          return formatPerformanceResponse(performance, 'lesson');
+        }
+      }
+      
+      // Handle general queries
       if (lowerQuery.includes('total') || lowerQuery.includes('count') || lowerQuery.includes('how many')) {
         const { count, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
@@ -302,20 +427,11 @@ export default function ChatBot() {
         return `📊 **Total Overview**\n\nThere are ${count || 0} total customer acquisition records in the onboarding data.`;
       }
       
-      // List available lessons or programs
+      // List available items
       if (lowerQuery.includes('lesson') && (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('available'))) {
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('lesson_name_1')
-          .not('lesson_name_1', 'is', null);
-        
-        if (error || !data) {
-          return `I encountered an error while fetching lessons: ${error?.message}`;
-        }
-        
-        const uniqueLessons = [...new Set(data.map(item => item.lesson_name_1).filter(Boolean))];
-        const count = uniqueLessons.length;
-        const sampleLessons = uniqueLessons.slice(0, 8);
+        const lessons = await findBestMatches('', 'lesson');
+        const count = lessons.length;
+        const sampleLessons = lessons.slice(0, 8);
         
         let response = `📚 **Available Lessons** (${count} total)\n\n`;
         response += sampleLessons.map(lesson => `• ${lesson}`).join('\n');
@@ -328,26 +444,16 @@ export default function ChatBot() {
       }
       
       if (lowerQuery.includes('program') && (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('available'))) {
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('program_name_1')
-          .not('program_name_1', 'is', null);
+        const programs = await findBestMatches('', 'program');
         
-        if (error || !data) {
-          return `I encountered an error while fetching programs: ${error?.message}`;
-        }
-        
-        const uniquePrograms = [...new Set(data.map(item => item.program_name_1).filter(Boolean))];
-        const count = uniquePrograms.length;
-        
-        let response = `🎯 **Available Programs** (${count} total)\n\n`;
-        response += uniquePrograms.map(program => `• ${program}`).join('\n');
+        let response = `🎯 **Available Programs** (${programs.length} total)\n\n`;
+        response += programs.map(program => `• ${program}`).join('\n');
         
         return response;
       }
       
-      // Default helpful response
-      return `🤖 **I can help you analyze campaign performance!** Try these queries:\n\n**Lesson Analysis:**\n• "How is the Performance Max Campaign lesson performing this quarter?"\n• "Show me YouTube lesson performance by region"\n\n**Program Analysis:**\n• "How is the ASG Primary Path program performing?"\n• "Compare ASG Primary Path vs LPW Path programs"\n\n**General Queries:**\n• "List available lessons"\n• "Show me all programs"\n• "How many total customers?"\n\nWhat would you like to analyze?`;
+      // Provide helpful suggestions when no matches found
+      return `🤖 **I'd be happy to help!** Here are some things you can try:\n\n**Program Analysis:**\n• "How is ASG Primary Path doing?"\n• "Compare ASG Primary Path with LPW Path"\n• "Show me LPW Path performance in Q3"\n\n**Lesson Analysis:**\n• "How is Product Feed Optimisation performing?"\n• "Show me Shopping Campaigns lesson performance"\n\n**General Queries:**\n• "List all programs"\n• "Show available lessons"\n• "How many total customers?"\n\n*Tip: Try using specific program names like "ASG Primary Path" or "LPW Path"*`;
       
     } catch (err) {
       console.error('Unexpected error in processUserQuery:', err);
