@@ -519,7 +519,7 @@ export default function ChatBot() {
   };
 
   return (
-    <Card className="w-full max-w-4xl mx-auto h-[600px] flex flex-col">
+    <Card className="w-full max-w-4xl mx-auto h-[600px] flex flex-col outline-none">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bot className="w-6 h-6" />
