@@ -6,12 +6,19 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { FunnelVisualization } from "./FunnelVisualization";
+import { RegionalFunnelChart } from "./RegionalFunnelChart";
+import { FunnelComparison } from "./FunnelComparison";
 
 interface Message {
   id: string;
   type: 'user' | 'bot';
   content: string;
   timestamp: Date;
+  visualData?: {
+    type: 'funnel' | 'comparison' | 'regional';
+    data: any;
+  };
 }
 
 interface FunnelData {
@@ -308,52 +315,36 @@ export default function ChatBot() {
 • Click Through Open Rate: ${funnel.clickThroughOpenRate.toFixed(1)}% (Clicks ÷ Opens)`;
   };
 
-  const formatFunnelResponse = (performance: FunnelPerformance): string => {
+  const formatFunnelResponse = (performance: FunnelPerformance): { text: string; visualData: any } => {
     const { name, type, totalFunnel, regionBreakdown, timeFilter } = performance;
     const timeContext = timeFilter ? ` in ${timeFilter}` : '';
     
     let response = `📊 **${type === 'lesson' ? 'Lesson' : 'Program'} Funnel Analysis**${timeContext}\n\n`;
-    response += formatFunnelMetrics(totalFunnel, name);
+    response += `Analyzing funnel performance for **${name}** with visual breakdown below.`;
     
-    // Add regional breakdown if available
-    const regions = Object.keys(regionBreakdown);
-    if (regions.length > 1) {
-      response += `\n\n**Regional Funnel Performance:**\n`;
-      regions
-        .sort((a, b) => regionBreakdown[b].deliveries - regionBreakdown[a].deliveries)
-        .forEach(region => {
-          const regionFunnel = regionBreakdown[region];
-          response += `\n• **${region}:** ${regionFunnel.deliveries.toLocaleString()} deliveries | ${regionFunnel.openRate.toFixed(1)}% open rate | ${regionFunnel.clickThroughRate.toFixed(1)}% CTR`;
-        });
-    }
+    const visualData = {
+      type: 'funnel' as const,
+      data: { performance, showRegional: Object.keys(regionBreakdown).length > 1 }
+    };
     
-    return response;
+    return { text: response, visualData };
   };
 
-  const formatFunnelComparison = (comparison: any): string => {
+  const formatFunnelComparison = (comparison: any): { text: string; visualData: any } => {
     const { performance1, performance2 } = comparison;
     
     let response = `📊 **Funnel Performance Comparison**\n\n`;
+    response += `Comparing **${performance1.name}** vs **${performance2.name}** with detailed visual analysis below.`;
     
-    // Side-by-side comparison
-    response += `${formatFunnelMetrics(performance1.totalFunnel, performance1.name)}\n\n`;
-    response += `---\n\n`;
-    response += `${formatFunnelMetrics(performance2.totalFunnel, performance2.name)}\n\n`;
+    const visualData = {
+      type: 'comparison' as const,
+      data: comparison
+    };
     
-    // Quick comparison insights
-    response += `📈 **Quick Comparison:**\n`;
-    const p1 = performance1.totalFunnel;
-    const p2 = performance2.totalFunnel;
-    
-    response += `• **Deliveries:** ${performance1.name} (${p1.deliveries.toLocaleString()}) vs ${performance2.name} (${p2.deliveries.toLocaleString()})\n`;
-    response += `• **Open Rate:** ${performance1.name} (${p1.openRate.toFixed(1)}%) vs ${performance2.name} (${p2.openRate.toFixed(1)}%)\n`;
-    response += `• **Click Through Rate:** ${performance1.name} (${p1.clickThroughRate.toFixed(1)}%) vs ${performance2.name} (${p2.clickThroughRate.toFixed(1)}%)\n`;
-    response += `• **Click Through Open Rate:** ${performance1.name} (${p1.clickThroughOpenRate.toFixed(1)}%) vs ${performance2.name} (${p2.clickThroughOpenRate.toFixed(1)}%)\n`;
-    
-    return response;
+    return { text: response, visualData };
   };
 
-  const processUserQuery = async (query: string): Promise<string> => {
+  const processUserQuery = async (query: string): Promise<string | { text: string; visualData: any }> => {
     try {
       console.log('Processing query:', query);
       const lowerQuery = query.toLowerCase();
@@ -427,7 +418,14 @@ export default function ChatBot() {
         
         if (data) {
           const totalFunnel = getFunnelDataFromRecords(data);
-          return `📊 **Overall Funnel Performance**\n\n${formatFunnelMetrics(totalFunnel, 'Total Campaign Performance')}`;
+          const mockPerformance = {
+            name: 'Total Campaign Performance',
+            type: 'program' as const,
+            totalFunnel,
+            regionBreakdown: {},
+            timeFilter
+          };
+          return formatFunnelResponse(mockPerformance);
         }
       }
       
@@ -482,12 +480,24 @@ export default function ChatBot() {
     try {
       const botResponse = await processUserQuery(input);
       
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'bot',
-        content: botResponse,
-        timestamp: new Date()
-      };
+      let botMessage: Message;
+      
+      if (typeof botResponse === 'object' && botResponse.text && botResponse.visualData) {
+        botMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'bot',
+          content: botResponse.text,
+          timestamp: new Date(),
+          visualData: botResponse.visualData
+        };
+      } else {
+        botMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'bot',
+          content: typeof botResponse === 'string' ? botResponse : botResponse.text || 'No response available',
+          timestamp: new Date()
+        };
+      }
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
@@ -520,32 +530,53 @@ export default function ChatBot() {
         <ScrollArea className="flex-1 pr-4">
           <div className="space-y-4">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.type === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                <div className={`flex gap-2 max-w-[80%] ${
-                  message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
+              <div key={message.id} className={`flex items-start gap-3 ${
+                message.type === 'user' ? 'flex-row-reverse' : ''
+              }`}>
+                <div className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md ${
+                  message.type === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                </div>
+                <div className={`flex max-w-[95%] flex-col gap-3 ${
+                  message.type === 'user' ? 'items-end' : 'items-start'
+                }`}>
+                  <div className={`rounded-lg px-3 py-2 text-sm ${
                     message.type === 'user' 
                       ? 'bg-primary text-primary-foreground' 
-                      : 'bg-secondary text-secondary-foreground'
+                      : 'bg-muted'
                   }`}>
-                    {message.type === 'user' ? (
-                      <User className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
-                    )}
+                    <div className="whitespace-pre-wrap">{message.content}</div>
                   </div>
-                  <div className={`rounded-lg p-3 ${
-                    message.type === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground'
-                  }`}>
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  
+                  {/* Visual Data Components */}
+                  {message.visualData && (
+                    <div className="w-full max-w-4xl">
+                      {message.visualData.type === 'funnel' && (
+                        <div className="space-y-4">
+                          <FunnelVisualization 
+                            data={message.visualData.data.performance.totalFunnel}
+                            title={message.visualData.data.performance.name}
+                          />
+                          {message.visualData.data.showRegional && (
+                            <RegionalFunnelChart 
+                              regionBreakdown={message.visualData.data.performance.regionBreakdown}
+                            />
+                          )}
+                        </div>
+                      )}
+                      
+                      {message.visualData.type === 'comparison' && (
+                        <FunnelComparison 
+                          performance1={message.visualData.data.performance1}
+                          performance2={message.visualData.data.performance2}
+                        />
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="text-xs text-muted-foreground">
+                    {message.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
               </div>
