@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,23 @@ interface Message {
   type: 'user' | 'bot';
   content: string;
   timestamp: Date;
+}
+
+interface FunnelData {
+  deliveries: number;
+  opens: number;
+  clicks: number;
+  openRate: number;
+  clickThroughRate: number;
+  clickThroughOpenRate: number;
+}
+
+interface FunnelPerformance {
+  name: string;
+  type: 'program' | 'lesson';
+  totalFunnel: FunnelData;
+  regionBreakdown: Record<string, FunnelData>;
+  timeFilter?: string;
 }
 
 // Program name mappings and aliases
@@ -47,7 +63,7 @@ export default function ChatBot() {
     {
       id: '1',
       type: 'bot',
-      content: 'Hi! I can help you analyze your onboarding program performance. Try asking about:\n\n• "Compare ASG Primary Path with LPW Path programs"\n• "How is ASG Primary Path doing in Q3?"\n• "Show me Product Feed Optimisation performance"\n• "List all available programs"\n\nWhat would you like to analyze?',
+      content: 'Hi! I can help you analyze your marketing funnel performance. Try asking about:\n\n• "Compare ASG Primary Path with LPW Path funnel performance"\n• "How is ASG Primary Path funnel performing in Q3?"\n• "Show me Product Feed Optimisation funnel metrics"\n• "Give me total deliveries, opens, and clicks for LPW Path"\n\nI\'ll show you key metrics like Open Rate, Click Through Rate, and Click Through Open Rate for data-driven insights!',
       timestamp: new Date()
     }
   ]);
@@ -97,32 +113,75 @@ export default function ChatBot() {
     return getCurrentQuarter();
   };
 
-  const calculateSimilarity = (str1: string, str2: string): number => {
-    const s1 = str1.toLowerCase().trim();
-    const s2 = str2.toLowerCase().trim();
+  const calculateFunnelMetrics = (deliveries: number, opens: number, clicks: number): FunnelData => {
+    const openRate = deliveries > 0 ? (opens / deliveries) * 100 : 0;
+    const clickThroughRate = deliveries > 0 ? (clicks / deliveries) * 100 : 0;
+    const clickThroughOpenRate = opens > 0 ? (clicks / opens) * 100 : 0;
+
+    return {
+      deliveries,
+      opens,
+      clicks,
+      openRate,
+      clickThroughRate,
+      clickThroughOpenRate
+    };
+  };
+
+  const getFunnelDataFromRecords = (records: any[]): FunnelData => {
+    const funnelData = records.reduce((acc, record) => {
+      const category = record.category_1?.toLowerCase() || '';
+      const count = record.customers_1 || 0;
+      
+      if (category.includes('deliver')) {
+        acc.deliveries += count;
+      } else if (category.includes('open')) {
+        acc.opens += count;
+      } else if (category.includes('click')) {
+        acc.clicks += count;
+      }
+      
+      return acc;
+    }, { deliveries: 0, opens: 0, clicks: 0 });
+
+    return calculateFunnelMetrics(funnelData.deliveries, funnelData.opens, funnelData.clicks);
+  };
+
+  const calculateSimilarity = (query: string, target: string): number => {
+    const queryWords = query.toLowerCase().split(/\s+/).filter(word => 
+      !['program', 'programs', 'lesson', 'lessons', 'performance', 'funnel', 'metrics', 'how', 'is', 'doing', 'show', 'me', 'the', 'with', 'vs', 'versus', 'compare', 'comparison', 'give', 'total', 'deliveries', 'opens', 'clicks'].includes(word)
+    );
+    
+    const targetWords = target.toLowerCase().split(/\s+/);
     
     // Exact match
-    if (s1 === s2) return 1.0;
+    if (queryWords.join(' ') === targetWords.join(' ')) return 1.0;
     
-    // Check if one contains the other
-    if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+    // Check for exact phrase match
+    const queryPhrase = queryWords.join(' ');
+    const targetPhrase = targetWords.join(' ');
+    if (queryPhrase === targetPhrase) return 1.0;
     
-    // Word-based similarity
-    const words1 = s1.split(/\s+/);
-    const words2 = s2.split(/\s+/);
+    // Partial phrase matching
+    if (queryPhrase.includes(targetPhrase) || targetPhrase.includes(queryPhrase)) return 0.9;
     
-    let matchCount = 0;
-    for (const word1 of words1) {
-      for (const word2 of words2) {
-        if (word1 === word2 || word1.includes(word2) || word2.includes(word1)) {
-          matchCount++;
+    // Word-based similarity with scoring
+    let score = 0;
+    let maxPossibleScore = Math.max(queryWords.length, targetWords.length);
+    
+    for (const queryWord of queryWords) {
+      for (const targetWord of targetWords) {
+        if (queryWord === targetWord) {
+          score += 1.0;
+          break;
+        } else if (queryWord.includes(targetWord) || targetWord.includes(queryWord)) {
+          score += 0.8;
           break;
         }
       }
     }
     
-    const similarity = matchCount / Math.max(words1.length, words2.length);
-    return similarity;
+    return maxPossibleScore > 0 ? score / maxPossibleScore : 0;
   };
 
   const findBestMatches = async (query: string, type: 'lesson' | 'program') => {
@@ -142,7 +201,7 @@ export default function ChatBot() {
     
     // Clean query - remove stop words and common terms
     const cleanQuery = query.toLowerCase()
-      .replace(/\b(program|programs|lesson|lessons|performance|how|is|doing|show|me|the|with|vs|versus|compare|comparison)\b/g, '')
+      .replace(/\b(program|programs|lesson|lessons|performance|how|is|doing|show|me|the|with|vs|versus|compare|comparison|funnel|metrics|deliveries|opens|clicks|total|give)\b/g, '')
       .trim();
     
     console.log('Clean query:', cleanQuery);
@@ -172,13 +231,14 @@ export default function ChatBot() {
     return bestMatches;
   };
 
-  const analyzeLessonPerformance = async (lessonName: string, timeFilter?: string) => {
-    console.log('Analyzing lesson:', lessonName, 'for period:', timeFilter);
+  const analyzeFunnelPerformance = async (name: string, type: 'program' | 'lesson', timeFilter?: string): Promise<FunnelPerformance | null> => {
+    console.log(`Analyzing ${type} funnel:`, name, 'for period:', timeFilter);
     
+    const column = type === 'lesson' ? 'lesson_name_1' : 'program_name_1';
     let query = supabase
       .from('Onboarding_Dunmmy_Data')
       .select('*')
-      .eq('lesson_name_1', lessonName);
+      .eq(column, name);
     
     if (timeFilter) {
       query = query.eq('send_date_quarter_1', timeFilter);
@@ -187,181 +247,108 @@ export default function ChatBot() {
     const { data, error } = await query;
     
     if (error) {
-      console.error('Error analyzing lesson:', error);
+      console.error(`Error analyzing ${type} funnel:`, error);
       return null;
     }
     
     if (!data || data.length === 0) {
-      console.log('No data found for lesson:', lessonName);
+      console.log(`No data found for ${type}:`, name);
       return null;
     }
     
-    const totalCustomers = data.length;
-    const regionBreakdown = data.reduce((acc, record) => {
-      const region = record.acq_region_1 || 'Unknown';
-      acc[region] = (acc[region] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Calculate overall funnel metrics
+    const totalFunnel = getFunnelDataFromRecords(data);
     
-    const countryBreakdown = data.reduce((acc, record) => {
-      const country = record.country_code_1 || 'Unknown';
-      acc[country] = (acc[country] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Calculate regional breakdown
+    const regionBreakdown: Record<string, FunnelData> = {};
+    const regions = [...new Set(data.map(record => record.acq_region_1).filter(Boolean))];
     
-    const managedVsUnmanaged = data.reduce((acc, record) => {
-      const status = record.assignment_status_1 || 'Unknown';
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    regions.forEach(region => {
+      const regionData = data.filter(record => record.acq_region_1 === region);
+      regionBreakdown[region] = getFunnelDataFromRecords(regionData);
+    });
     
     return {
-      lessonName,
-      totalCustomers,
-      regionBreakdown,
-      countryBreakdown,
-      managedVsUnmanaged,
-      timeFilter
-    };
-  };
-
-  const analyzeProgramPerformance = async (programName: string, timeFilter?: string) => {
-    console.log('Analyzing program:', programName, 'for period:', timeFilter);
-    
-    let query = supabase
-      .from('Onboarding_Dunmmy_Data')
-      .select('*')
-      .eq('program_name_1', programName);
-    
-    if (timeFilter) {
-      query = query.eq('send_date_quarter_1', timeFilter);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('Error analyzing program:', error);
-      return null;
-    }
-    
-    if (!data || data.length === 0) {
-      console.log('No data found for program:', programName);
-      return null;
-    }
-    
-    const totalCustomers = data.length;
-    const lessonBreakdown = data.reduce((acc, record) => {
-      const lesson = record.lesson_name_1 || 'Unknown';
-      acc[lesson] = (acc[lesson] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    const regionBreakdown = data.reduce((acc, record) => {
-      const region = record.acq_region_1 || 'Unknown';
-      acc[region] = (acc[region] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    return {
-      programName,
-      totalCustomers,
-      lessonBreakdown,
+      name,
+      type,
+      totalFunnel,
       regionBreakdown,
       timeFilter
     };
   };
 
-  const comparePrograms = async (program1: string, program2: string, timeFilter?: string) => {
-    console.log('Comparing programs:', program1, 'vs', program2);
+  const compareFunnelPerformance = async (name1: string, name2: string, type: 'program' | 'lesson', timeFilter?: string) => {
+    console.log(`Comparing ${type} funnels:`, name1, 'vs', name2);
     
     const [perf1, perf2] = await Promise.all([
-      analyzeProgramPerformance(program1, timeFilter),
-      analyzeProgramPerformance(program2, timeFilter)
+      analyzeFunnelPerformance(name1, type, timeFilter),
+      analyzeFunnelPerformance(name2, type, timeFilter)
     ]);
     
     if (!perf1 || !perf2) {
-      console.log('Failed to get data for comparison');
+      console.log('Failed to get funnel data for comparison');
       return null;
     }
     
-    const customerDiff = perf1.totalCustomers - perf2.totalCustomers;
-    const betterProgram = customerDiff > 0 ? program1 : program2;
-    const performanceGap = Math.abs(customerDiff);
-    const percentageDiff = perf2.totalCustomers > 0 ? 
-      ((customerDiff / perf2.totalCustomers) * 100).toFixed(1) : 'N/A';
-    
     return {
-      program1: perf1,
-      program2: perf2,
-      betterProgram,
-      performanceGap,
-      percentageDiff
+      performance1: perf1,
+      performance2: perf2
     };
   };
 
-  const formatPerformanceResponse = (performance: any, type: 'lesson' | 'program') => {
-    const { totalCustomers, regionBreakdown, timeFilter } = performance;
+  const formatFunnelMetrics = (funnel: FunnelData, name: string): string => {
+    return `**${name}:**
+📧 Deliveries: ${funnel.deliveries.toLocaleString()}
+📖 Opens: ${funnel.opens.toLocaleString()}
+🖱️ Clicks: ${funnel.clicks.toLocaleString()}
+
+📊 **Key Metrics:**
+• Open Rate: ${funnel.openRate.toFixed(1)}% (Opens ÷ Deliveries)
+• Click Through Rate: ${funnel.clickThroughRate.toFixed(1)}% (Clicks ÷ Deliveries)
+• Click Through Open Rate: ${funnel.clickThroughOpenRate.toFixed(1)}% (Clicks ÷ Opens)`;
+  };
+
+  const formatFunnelResponse = (performance: FunnelPerformance): string => {
+    const { name, type, totalFunnel, regionBreakdown, timeFilter } = performance;
     const timeContext = timeFilter ? ` in ${timeFilter}` : '';
     
-    let response = `📊 **${type === 'lesson' ? 'Lesson' : 'Program'} Performance Analysis**${timeContext}\n\n`;
-    response += `**${performance.lessonName || performance.programName}**\n`;
-    response += `📈 Total Customers: ${totalCustomers}\n\n`;
+    let response = `📊 **${type === 'lesson' ? 'Lesson' : 'Program'} Funnel Analysis**${timeContext}\n\n`;
+    response += formatFunnelMetrics(totalFunnel, name);
     
-    if (type === 'program' && performance.lessonBreakdown) {
-      response += `**Top Lessons in Program:**\n`;
-      const topLessons = Object.entries(performance.lessonBreakdown)
-        .sort(([,a], [,b]) => (b as number) - (a as number))
-        .slice(0, 3);
-      topLessons.forEach(([lesson, count]) => {
-        response += `• ${lesson}: ${count} customers\n`;
-      });
-      response += '\n';
-    }
-    
-    response += `**Regional Performance:**\n`;
-    Object.entries(regionBreakdown)
-      .sort(([,a], [,b]) => (b as number) - (a as number))
-      .forEach(([region, count]) => {
-        const percentage = ((count as number / totalCustomers) * 100).toFixed(1);
-        response += `• ${region}: ${count} customers (${percentage}%)\n`;
-      });
-    
-    if (performance.managedVsUnmanaged) {
-      response += `\n**Campaign Management:**\n`;
-      Object.entries(performance.managedVsUnmanaged).forEach(([status, count]) => {
-        const percentage = ((count as number / totalCustomers) * 100).toFixed(1);
-        response += `• ${status}: ${count} customers (${percentage}%)\n`;
-      });
+    // Add regional breakdown if available
+    const regions = Object.keys(regionBreakdown);
+    if (regions.length > 1) {
+      response += `\n\n**Regional Funnel Performance:**\n`;
+      regions
+        .sort((a, b) => regionBreakdown[b].deliveries - regionBreakdown[a].deliveries)
+        .forEach(region => {
+          const regionFunnel = regionBreakdown[region];
+          response += `\n• **${region}:** ${regionFunnel.deliveries.toLocaleString()} deliveries | ${regionFunnel.openRate.toFixed(1)}% open rate | ${regionFunnel.clickThroughRate.toFixed(1)}% CTR`;
+        });
     }
     
     return response;
   };
 
-  const formatComparisonResponse = (comparison: any) => {
-    const { program1, program2, betterProgram, performanceGap, percentageDiff } = comparison;
+  const formatFunnelComparison = (comparison: any): string => {
+    const { performance1, performance2 } = comparison;
     
-    let response = `📊 **Program Comparison Analysis**\n\n`;
-    response += `**${program1.programName}** vs **${program2.programName}**\n\n`;
+    let response = `📊 **Funnel Performance Comparison**\n\n`;
     
-    response += `📈 **Customer Acquisition:**\n`;
-    response += `• ${program1.programName}: ${program1.totalCustomers} customers\n`;
-    response += `• ${program2.programName}: ${program2.totalCustomers} customers\n\n`;
+    // Side-by-side comparison
+    response += `${formatFunnelMetrics(performance1.totalFunnel, performance1.name)}\n\n`;
+    response += `---\n\n`;
+    response += `${formatFunnelMetrics(performance2.totalFunnel, performance2.name)}\n\n`;
     
-    response += `🏆 **Winner:** ${betterProgram}\n`;
-    response += `📊 **Performance Gap:** ${performanceGap} customers (${percentageDiff}% difference)\n\n`;
+    // Quick comparison insights
+    response += `📈 **Quick Comparison:**\n`;
+    const p1 = performance1.totalFunnel;
+    const p2 = performance2.totalFunnel;
     
-    response += `**Regional Comparison:**\n`;
-    const allRegions = new Set([
-      ...Object.keys(program1.regionBreakdown),
-      ...Object.keys(program2.regionBreakdown)
-    ]);
-    
-    allRegions.forEach(region => {
-      const count1 = program1.regionBreakdown[region] || 0;
-      const count2 = program2.regionBreakdown[region] || 0;
-      const better = count1 > count2 ? program1.programName : program2.programName;
-      response += `• ${region}: ${program1.programName} (${count1}) vs ${program2.programName} (${count2}) - ${better} leads\n`;
-    });
+    response += `• **Deliveries:** ${performance1.name} (${p1.deliveries.toLocaleString()}) vs ${performance2.name} (${p2.deliveries.toLocaleString()})\n`;
+    response += `• **Open Rate:** ${performance1.name} (${p1.openRate.toFixed(1)}%) vs ${performance2.name} (${p2.openRate.toFixed(1)}%)\n`;
+    response += `• **Click Through Rate:** ${performance1.name} (${p1.clickThroughRate.toFixed(1)}%) vs ${performance2.name} (${p2.clickThroughRate.toFixed(1)}%)\n`;
+    response += `• **Click Through Open Rate:** ${performance1.name} (${p1.clickThroughOpenRate.toFixed(1)}%) vs ${performance2.name} (${p2.clickThroughOpenRate.toFixed(1)}%)\n`;
     
     return response;
   };
@@ -374,6 +361,11 @@ export default function ChatBot() {
       // Extract time filter
       const timeFilter = extractTimeFilter(query);
       
+      // Check for funnel-specific queries
+      const isFunnelQuery = lowerQuery.includes('funnel') || lowerQuery.includes('deliveries') || 
+                           lowerQuery.includes('opens') || lowerQuery.includes('clicks') ||
+                           lowerQuery.includes('open rate') || lowerQuery.includes('click through');
+      
       // Check for comparison queries
       const isComparison = lowerQuery.includes('compare') || lowerQuery.includes('vs') || 
                           lowerQuery.includes('versus') || lowerQuery.includes(' with ');
@@ -383,14 +375,23 @@ export default function ChatBot() {
         const matchingPrograms = await findBestMatches(query, 'program');
         
         if (matchingPrograms.length >= 2) {
-          const comparison = await comparePrograms(matchingPrograms[0], matchingPrograms[1], timeFilter);
+          const comparison = await compareFunnelPerformance(matchingPrograms[0], matchingPrograms[1], 'program', timeFilter);
           if (comparison) {
-            return formatComparisonResponse(comparison);
+            return formatFunnelComparison(comparison);
           }
         } else if (matchingPrograms.length === 1) {
-          return `🔍 **Found Program:** ${matchingPrograms[0]}\n\nTo compare programs, I need at least two programs. Here are some available programs you can compare with:\n\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ${matchingPrograms[0]} with LPW Path"`;
+          // Try to find lessons if only one program found
+          const matchingLessons = await findBestMatches(query, 'lesson');
+          if (matchingLessons.length >= 1) {
+            const comparison = await compareFunnelPerformance(matchingPrograms[0], matchingLessons[0], 'program', timeFilter);
+            if (comparison) {
+              return formatFunnelComparison(comparison);
+            }
+          }
+          
+          return `🔍 **Found Program:** ${matchingPrograms[0]}\n\nTo compare programs, I need at least two programs. Here are some available programs you can compare with:\n\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ${matchingPrograms[0]} funnel with LPW Path funnel"`;
         } else {
-          return `🔍 **No matching programs found** for comparison.\n\nAvailable programs:\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ASG Primary Path with LPW Path"`;
+          return `🔍 **No matching programs found** for comparison.\n\nAvailable programs:\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ASG Primary Path funnel with LPW Path funnel"`;
         }
       }
       
@@ -398,9 +399,9 @@ export default function ChatBot() {
       const matchingPrograms = await findBestMatches(query, 'program');
       if (matchingPrograms.length > 0) {
         console.log('Found matching programs:', matchingPrograms);
-        const performance = await analyzeProgramPerformance(matchingPrograms[0], timeFilter);
+        const performance = await analyzeFunnelPerformance(matchingPrograms[0], 'program', timeFilter);
         if (performance) {
-          return formatPerformanceResponse(performance, 'program');
+          return formatFunnelResponse(performance);
         }
       }
       
@@ -408,23 +409,26 @@ export default function ChatBot() {
       const matchingLessons = await findBestMatches(query, 'lesson');
       if (matchingLessons.length > 0) {
         console.log('Found matching lessons:', matchingLessons);
-        const performance = await analyzeLessonPerformance(matchingLessons[0], timeFilter);
+        const performance = await analyzeFunnelPerformance(matchingLessons[0], 'lesson', timeFilter);
         if (performance) {
-          return formatPerformanceResponse(performance, 'lesson');
+          return formatFunnelResponse(performance);
         }
       }
       
       // Handle general queries
       if (lowerQuery.includes('total') || lowerQuery.includes('count') || lowerQuery.includes('how many')) {
-        const { count, error } = await supabase
+        const { data, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
-          .select('*', { count: 'exact', head: true });
+          .select('category_1, customers_1');
         
         if (error) {
           return `I encountered an error while fetching the data: ${error.message}`;
         }
         
-        return `📊 **Total Overview**\n\nThere are ${count || 0} total customer acquisition records in the onboarding data.`;
+        if (data) {
+          const totalFunnel = getFunnelDataFromRecords(data);
+          return `📊 **Overall Funnel Performance**\n\n${formatFunnelMetrics(totalFunnel, 'Total Campaign Performance')}`;
+        }
       }
       
       // List available items
@@ -453,7 +457,7 @@ export default function ChatBot() {
       }
       
       // Provide helpful suggestions when no matches found
-      return `🤖 **I'd be happy to help!** Here are some things you can try:\n\n**Program Analysis:**\n• "How is ASG Primary Path doing?"\n• "Compare ASG Primary Path with LPW Path"\n• "Show me LPW Path performance in Q3"\n\n**Lesson Analysis:**\n• "How is Product Feed Optimisation performing?"\n• "Show me Shopping Campaigns lesson performance"\n\n**General Queries:**\n• "List all programs"\n• "Show available lessons"\n• "How many total customers?"\n\n*Tip: Try using specific program names like "ASG Primary Path" or "LPW Path"*`;
+      return `🤖 **I'd be happy to help with your marketing funnel analysis!** Here are some things you can try:\n\n**Program Funnel Analysis:**\n• "How is ASG Primary Path funnel performing?"\n• "Compare ASG Primary Path with LPW Path funnel performance"\n• "Show me LPW Path funnel metrics in Q3"\n• "Give me total deliveries, opens, and clicks for ASG Primary Path"\n\n**Lesson Funnel Analysis:**\n• "How is Product Feed Optimisation funnel performing?"\n• "Show me Shopping Campaigns lesson funnel metrics"\n\n**General Queries:**\n• "List all programs"\n• "Show available lessons"\n• "Give me total deliveries, opens, and clicks"\n\n*I'll show you Open Rate, Click Through Rate, and Click Through Open Rate for data-driven insights!*`;
       
     } catch (err) {
       console.error('Unexpected error in processUserQuery:', err);
@@ -509,7 +513,7 @@ export default function ChatBot() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bot className="w-6 h-6" />
-          Campaign Performance Analytics
+          Marketing Funnel Analytics
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
@@ -553,7 +557,7 @@ export default function ChatBot() {
                     <Bot className="w-4 h-4" />
                   </div>
                   <div className="bg-muted rounded-lg p-3">
-                    <p className="text-sm text-muted-foreground">Analyzing data...</p>
+                    <p className="text-sm text-muted-foreground">Analyzing funnel data...</p>
                   </div>
                 </div>
               </div>
@@ -566,7 +570,7 @@ export default function ChatBot() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Ask about lesson or program performance..."
+            placeholder="Ask about funnel performance, deliveries, opens, clicks..."
             disabled={isLoading}
             className="flex-1"
           />
