@@ -26,99 +26,164 @@ export default function ChatBot() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const processUserQuery = async (query: string) => {
-    console.log('Processing query:', query);
+  const processUserQuery = async (query: string): Promise<string> => {
     try {
-      // Simple query processing based on keywords
-      let response = '';
+      console.log('Processing query:', query);
+      const lowerQuery = query.toLowerCase();
       
-      if (query.toLowerCase().includes('total') || query.toLowerCase().includes('count')) {
-        console.log('Executing count query...');
-        const { data, error, count } = await supabase
+      // Enhanced keyword matching with more variations
+      const keywords = {
+        total: ['total', 'count', 'how many', 'number of', 'amount'],
+        campaigns: ['campaign', 'campaigns'],
+        lessons: ['lesson', 'lessons', 'course', 'courses'],
+        programs: ['program', 'programs'],
+        countries: ['country', 'countries', 'nation', 'nations'],
+        regions: ['region', 'regions', 'area', 'areas'],
+        customers: ['customer', 'customers', 'user', 'users', 'people'],
+        spend: ['spend', 'spending', 'cost', 'money', 'budget'],
+        language: ['language', 'languages', 'lang'],
+        product: ['product', 'products'],
+        category: ['category', 'categories', 'type', 'types']
+      };
+
+      // Check what type of query this is
+      let queryType = '';
+      let targetField = '';
+      
+      for (const [key, variations] of Object.entries(keywords)) {
+        if (variations.some(keyword => lowerQuery.includes(keyword))) {
+          if (key === 'total' || key === 'customers') {
+            queryType = 'count';
+          } else {
+            queryType = 'list';
+            targetField = key;
+          }
+          break;
+        }
+      }
+
+      console.log('Query type:', queryType, 'Target field:', targetField);
+
+      if (queryType === 'count') {
+        // Get total count of records
+        const { count, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('*', { count: 'exact', head: true });
         
-        console.log('Count query result:', { data, error, count });
-        if (error) {
-          console.error('Count query error:', error);
-          throw error;
-        }
-        response = `I found a total of ${count || 0} records in the onboarding data.`;
-      } 
-      else if (query.toLowerCase().includes('campaign')) {
-        console.log('Executing campaign query...');
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('campaign_id_1')
-          .not('campaign_id_1', 'is', null)
-          .limit(10);
+        console.log('Count query result:', { error, count });
         
-        console.log('Campaign query result:', { data, error });
         if (error) {
-          console.error('Campaign query error:', error);
-          throw error;
+          console.error('Supabase error:', error);
+          return `I encountered an error while fetching the data: ${error.message}`;
         }
-        const campaigns = [...new Set(data?.map(d => d.campaign_id_1))];
-        response = `Here are some campaign IDs: ${campaigns.slice(0, 5).join(', ')}${campaigns.length > 5 ? '...' : ''}`;
-      }
-      else if (query.toLowerCase().includes('lesson')) {
-        console.log('Executing lesson query...');
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('lesson_name_1')
-          .not('lesson_name_1', 'is', null)
-          .limit(10);
         
-        console.log('Lesson query result:', { data, error });
-        if (error) {
-          console.error('Lesson query error:', error);
-          throw error;
-        }
-        const lessons = [...new Set(data?.map(d => d.lesson_name_1))];
-        response = `Here are some lesson names: ${lessons.slice(0, 3).join(', ')}${lessons.length > 3 ? '...' : ''}`;
+        return `There are ${count || 0} total records in the onboarding data.`;
       }
-      else if (query.toLowerCase().includes('program')) {
-        console.log('Executing program query...');
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('program_name_1')
-          .not('program_name_1', 'is', null)
-          .limit(10);
+
+      if (queryType === 'list' && targetField) {
+        let column = '';
+        let displayName = '';
         
-        console.log('Program query result:', { data, error });
-        if (error) {
-          console.error('Program query error:', error);
-          throw error;
+        switch (targetField) {
+          case 'campaigns':
+            column = 'campaign_id_1';
+            displayName = 'campaigns';
+            break;
+          case 'lessons':
+            column = 'lesson_name_1';
+            displayName = 'lessons';
+            break;
+          case 'programs':
+            column = 'program_name_1';
+            displayName = 'programs';
+            break;
+          case 'countries':
+            column = 'country_code_1';
+            displayName = 'countries';
+            break;
+          case 'regions':
+            column = 'acq_region_1';
+            displayName = 'regions';
+            break;
+          case 'spend':
+            column = 'spend_tier_grouped_1';
+            displayName = 'spend tiers';
+            break;
+          case 'language':
+            column = 'language_1';
+            displayName = 'languages';
+            break;
+          case 'product':
+            column = 'primary_product_1';
+            displayName = 'products';
+            break;
+          case 'category':
+            column = 'category_1';
+            displayName = 'categories';
+            break;
         }
-        const programs = [...new Set(data?.map(d => d.program_name_1))];
-        response = `Here are some program names: ${programs.slice(0, 3).join(', ')}${programs.length > 3 ? '...' : ''}`;
-      }
-      else if (query.toLowerCase().includes('country') || query.toLowerCase().includes('region')) {
-        console.log('Executing country/region query...');
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('country_code_1, acq_region_1')
-          .not('country_code_1', 'is', null)
-          .limit(10);
-        
-        console.log('Country/region query result:', { data, error });
-        if (error) {
-          console.error('Country/region query error:', error);
-          throw error;
+
+        if (column) {
+          const { data, error } = await supabase
+            .from('Onboarding_Dunmmy_Data')
+            .select(column)
+            .not(column, 'is', null);
+          
+          console.log(`${displayName} query result:`, { data, error });
+          
+          if (error) {
+            console.error('Supabase error:', error);
+            return `I encountered an error while fetching ${displayName}: ${error.message}`;
+          }
+          
+          if (data && data.length > 0) {
+            const uniqueValues = [...new Set(data.map(item => item[column]).filter(Boolean))];
+            const count = uniqueValues.length;
+            const sampleValues = uniqueValues.slice(0, 5);
+            
+            let response = `I found ${count} unique ${displayName}:\n\n`;
+            response += sampleValues.map(value => `• ${value}`).join('\n');
+            
+            if (count > 5) {
+              response += `\n\n...and ${count - 5} more.`;
+            }
+            
+            return response;
+          } else {
+            return `No ${displayName} data found in the records.`;
+          }
         }
-        const countries = [...new Set(data?.map(d => d.country_code_1))];
-        const regions = [...new Set(data?.map(d => d.acq_region_1))];
-        response = `Countries: ${countries.slice(0, 5).join(', ')}\nRegions: ${regions.slice(0, 3).join(', ')}`;
       }
-      else {
-        response = "I can help you explore your onboarding data! Try asking about:\n• Total records count\n• Campaigns\n• Lessons\n• Programs\n• Countries or regions\n\nWhat would you like to know?";
+
+      // General data insights for unmatched queries
+      const { data, error } = await supabase
+        .from('Onboarding_Dunmmy_Data')
+        .select('*')
+        .limit(1);
+      
+      if (error) {
+        console.error('Supabase error:', error);
+        return `I'm having trouble accessing the data right now. Error: ${error.message}`;
       }
       
-      console.log('Generated response:', response);
-      return response;
-    } catch (error) {
-      console.error('Query error:', error);
-      return `Sorry, I encountered an error while processing your query: ${error.message}. Please try again.`;
+      if (data && data.length > 0) {
+        return `I can help you analyze onboarding data! Try asking me questions like:
+        
+• "How many total records are there?"
+• "What campaigns are available?"
+• "Show me the different programs"
+• "What countries are in the data?"
+• "List the different regions"
+• "What languages are supported?"
+
+What would you like to know about the onboarding data?`;
+      }
+      
+      return "I couldn't find any data to analyze. Please check if the database contains onboarding records.";
+      
+    } catch (err) {
+      console.error('Unexpected error in processUserQuery:', err);
+      return `I encountered an unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`;
     }
   };
 
