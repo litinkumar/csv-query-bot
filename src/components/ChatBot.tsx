@@ -27,59 +27,85 @@ export default function ChatBot() {
   const [isLoading, setIsLoading] = useState(false);
 
   const processUserQuery = async (query: string) => {
+    console.log('Processing query:', query);
     try {
       // Simple query processing based on keywords
       let response = '';
       
       if (query.toLowerCase().includes('total') || query.toLowerCase().includes('count')) {
-        const { data, error } = await supabase
+        console.log('Executing count query...');
+        const { data, error, count } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('*', { count: 'exact', head: true });
         
-        if (error) throw error;
-        response = `I found a total of ${data?.length || 0} records in the onboarding data.`;
+        console.log('Count query result:', { data, error, count });
+        if (error) {
+          console.error('Count query error:', error);
+          throw error;
+        }
+        response = `I found a total of ${count || 0} records in the onboarding data.`;
       } 
       else if (query.toLowerCase().includes('campaign')) {
+        console.log('Executing campaign query...');
         const { data, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('campaign_id_1')
           .not('campaign_id_1', 'is', null)
           .limit(10);
         
-        if (error) throw error;
+        console.log('Campaign query result:', { data, error });
+        if (error) {
+          console.error('Campaign query error:', error);
+          throw error;
+        }
         const campaigns = [...new Set(data?.map(d => d.campaign_id_1))];
         response = `Here are some campaign IDs: ${campaigns.slice(0, 5).join(', ')}${campaigns.length > 5 ? '...' : ''}`;
       }
       else if (query.toLowerCase().includes('lesson')) {
+        console.log('Executing lesson query...');
         const { data, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('lesson_name_1')
           .not('lesson_name_1', 'is', null)
           .limit(10);
         
-        if (error) throw error;
+        console.log('Lesson query result:', { data, error });
+        if (error) {
+          console.error('Lesson query error:', error);
+          throw error;
+        }
         const lessons = [...new Set(data?.map(d => d.lesson_name_1))];
         response = `Here are some lesson names: ${lessons.slice(0, 3).join(', ')}${lessons.length > 3 ? '...' : ''}`;
       }
       else if (query.toLowerCase().includes('program')) {
+        console.log('Executing program query...');
         const { data, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('program_name_1')
           .not('program_name_1', 'is', null)
           .limit(10);
         
-        if (error) throw error;
+        console.log('Program query result:', { data, error });
+        if (error) {
+          console.error('Program query error:', error);
+          throw error;
+        }
         const programs = [...new Set(data?.map(d => d.program_name_1))];
         response = `Here are some program names: ${programs.slice(0, 3).join(', ')}${programs.length > 3 ? '...' : ''}`;
       }
       else if (query.toLowerCase().includes('country') || query.toLowerCase().includes('region')) {
+        console.log('Executing country/region query...');
         const { data, error } = await supabase
           .from('Onboarding_Dunmmy_Data')
           .select('country_code_1, acq_region_1')
           .not('country_code_1', 'is', null)
           .limit(10);
         
-        if (error) throw error;
+        console.log('Country/region query result:', { data, error });
+        if (error) {
+          console.error('Country/region query error:', error);
+          throw error;
+        }
         const countries = [...new Set(data?.map(d => d.country_code_1))];
         const regions = [...new Set(data?.map(d => d.acq_region_1))];
         response = `Countries: ${countries.slice(0, 5).join(', ')}\nRegions: ${regions.slice(0, 3).join(', ')}`;
@@ -88,10 +114,11 @@ export default function ChatBot() {
         response = "I can help you explore your onboarding data! Try asking about:\n• Total records count\n• Campaigns\n• Lessons\n• Programs\n• Countries or regions\n\nWhat would you like to know?";
       }
       
+      console.log('Generated response:', response);
       return response;
     } catch (error) {
       console.error('Query error:', error);
-      return 'Sorry, I encountered an error while processing your query. Please try again.';
+      return `Sorry, I encountered an error while processing your query: ${error.message}. Please try again.`;
     }
   };
 
