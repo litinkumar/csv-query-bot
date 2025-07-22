@@ -92,8 +92,8 @@ Important guidelines:
       console.log('Executing query plan:', plan);
       
       // Execute the SQL query
-      const { data: queryData, error } = await supabase.rpc('execute_query', {
-        query: plan.sqlQuery
+      const { data: queryData, error } = await supabase.functions.invoke('execute-query', {
+        body: { query: plan.sqlQuery }
       });
 
       if (error) {
@@ -101,11 +101,14 @@ Important guidelines:
         throw error;
       }
 
+      // Ensure queryData is an array
+      const safeQueryData = Array.isArray(queryData) ? queryData : [];
+
       // Generate intelligent response
       const responsePrompt = `
 Query: "${plan.intent}"
-Data results: ${JSON.stringify(queryData?.slice(0, 5) || [])}
-Total records: ${queryData?.length || 0}
+Data results: ${JSON.stringify(safeQueryData.slice(0, 5))}
+Total records: ${safeQueryData.length}
 
 Generate a natural language response that:
 1. Directly answers the user's question
@@ -125,21 +128,21 @@ Respond with JSON:
 
       // Prepare visualization data
       let visualData = null;
-      if (plan.expectedVisualization === 'funnel' && queryData?.length > 0) {
+      if (plan.expectedVisualization === 'funnel' && safeQueryData.length > 0) {
         visualData = {
           type: 'funnel',
-          data: this.prepareFunnelData(queryData)
+          data: this.prepareFunnelData(safeQueryData)
         };
-      } else if (plan.expectedVisualization === 'table' && queryData?.length > 0) {
+      } else if (plan.expectedVisualization === 'table' && safeQueryData.length > 0) {
         visualData = {
           type: 'table',
-          data: queryData
+          data: safeQueryData
         };
       }
 
       return {
         answer: parsedResponse.answer,
-        data: queryData || [],
+        data: safeQueryData,
         visualData,
         followUps: parsedResponse.followUps || [],
         insights: parsedResponse.insights || []
