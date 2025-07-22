@@ -1,12 +1,14 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { FunnelVisualization } from "./FunnelVisualization";
-import { DataTable } from "./DataTable";
+import { DimensionalFollowUps } from "./DimensionalFollowUps";
 import { LLMQueryService } from "../services/llmQueryService";
+import { DimensionService, Dimension } from "../services/dimensionService";
 import { useEnhancedMemory } from "../hooks/useEnhancedMemory";
 
 interface Message {
@@ -18,6 +20,8 @@ interface Message {
     type: 'funnel' | 'table' | 'chart';
     data: any;
   };
+  dimensions?: Dimension[];
+  originalQuery?: string;
 }
 
 export default function ChatBot() {
@@ -25,77 +29,40 @@ export default function ChatBot() {
     {
       id: '1',
       type: 'bot',
-      content: 'Hi! I\'m your intelligent data assistant powered by AI. I can understand and answer complex questions about your marketing data in natural language.\n\n**Try asking me things like:**\n• "How does the ASG Primary Path perform in Americas?"\n• "Which region has the highest conversion rates?"\n• "Compare program performance across quarters"\n• "Show me funnel metrics for European customers"\n• "What are the top performing lessons in Q3?"\n\nI understand context, remember our conversation, and provide insights tailored to your data!',
+      content: 'Ask me about your marketing data and I\'ll show you the funnel performance with actionable insights.',
       timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [availableDimensions, setAvailableDimensions] = useState<Dimension[]>([]);
   
-  const { addQueryToMemory, generateSmartSuggestions, getRelevantContext } = useEnhancedMemory();
+  const { addQueryToMemory, getRelevantContext } = useEnhancedMemory();
 
-  const processIntelligentQuery = async (query: string): Promise<string | { text: string; visualData?: any }> => {
+  useEffect(() => {
+    // Load available dimensions on component mount
+    DimensionService.getAvailableDimensions().then(setAvailableDimensions);
+  }, []);
+
+  const processIntelligentQuery = async (query: string): Promise<string | { text: string; visualData?: any; dimensions?: Dimension[] }> => {
     try {
-      console.log('Processing intelligent query with LLM:', query);
+      console.log('Processing visual-first query:', query);
       
-      // Get conversation context
       const context = getRelevantContext(query);
-      console.log('Conversation context:', context);
-      
-      // Step 1: Analyze query with LLM
       const queryPlan = await LLMQueryService.analyzeQuery(query, context);
-      console.log('Query plan generated:', queryPlan);
-      
-      // Step 2: Execute the query plan
       const result = await LLMQueryService.executeQueryPlan(queryPlan);
-      console.log('Query executed:', result);
       
-      // Step 3: Update memory with query and insights
       addQueryToMemory(query, queryPlan.intent, queryPlan.entities, result.insights);
       
-      // Step 4: Generate additional smart suggestions
-      const smartSuggestions = await generateSmartSuggestions();
-      const combinedFollowUps = [...new Set([...result.followUps, ...smartSuggestions])].slice(0, 3);
-      
-      // Step 5: Prepare response with insights
-      let response = result.answer;
-      
-      if (result.insights && result.insights.length > 0) {
-        response += `\n\n**Key Insights:**\n`;
-        response += result.insights.map(insight => `• ${insight}`).join('\n');
-      }
-      
-      if (combinedFollowUps.length > 0) {
-        response += `\n\n**You might also want to ask:**\n`;
-        response += combinedFollowUps.map(followUp => `• "${followUp}"`).join('\n');
-      }
-      
-      // Return with visualization if available
-      if (result.visualData) {
-        return {
-          text: response,
-          visualData: result.visualData
-        };
-      }
-      
-      return response;
+      return {
+        text: result.answer,
+        visualData: result.visualData,
+        dimensions: availableDimensions
+      };
       
     } catch (error) {
-      console.error('Error processing intelligent query:', error);
-      
-      // Provide helpful fallback
-      const fallbackSuggestions = await generateSmartSuggestions().catch(() => [
-        "What programs are available?",
-        "Show me regional performance data",
-        "How do conversion rates look?"
-      ]);
-      
-      let fallbackResponse = `I encountered an issue processing your question: "${query}". This might be due to data availability or query complexity.`;
-      
-      fallbackResponse += `\n\n**Try asking:**\n`;
-      fallbackResponse += fallbackSuggestions.map(suggestion => `• "${suggestion}"`).join('\n');
-      
-      return fallbackResponse;
+      console.error('Error processing query:', error);
+      return `Unable to process your question: "${query}". Try asking about program performance, regional analysis, or quarterly trends.`;
     }
   };
 
@@ -119,19 +86,21 @@ export default function ChatBot() {
       
       let botMessage: Message;
       
-      if (typeof botResponse === 'object' && botResponse.text && botResponse.visualData) {
+      if (typeof botResponse === 'object' && botResponse.text) {
         botMessage = {
           id: (Date.now() + 1).toString(),
           type: 'bot',
           content: botResponse.text,
           timestamp: new Date(),
-          visualData: botResponse.visualData
+          visualData: botResponse.visualData,
+          dimensions: botResponse.dimensions,
+          originalQuery: currentInput
         };
       } else {
         botMessage = {
           id: (Date.now() + 1).toString(),
           type: 'bot',
-          content: typeof botResponse === 'string' ? botResponse : botResponse.text || 'I couldn\'t process your question.',
+          content: typeof botResponse === 'string' ? botResponse : 'Unable to process your question.',
           timestamp: new Date()
         };
       }
@@ -147,6 +116,13 @@ export default function ChatBot() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDimensionSelect = (dimension: string, value?: string, originalQuery?: string) => {
+    if (!originalQuery) return;
+    
+    const followUpQuery = DimensionService.generateFollowUpQuery(originalQuery, dimension, value);
+    setInput(followUpQuery);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -173,35 +149,33 @@ export default function ChatBot() {
                 <div className={`flex flex-col gap-3 ${
                   message.type === 'user' 
                     ? 'items-end max-w-[80%]' 
-                    : message.visualData 
-                      ? 'items-start w-full' 
-                      : 'items-start max-w-[85%]'
+                    : 'items-start w-full'
                 }`}>
-                  <div className={`rounded-lg px-3 py-2 text-sm ${
-                    message.type === 'user' 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'bg-muted'
-                  }`}>
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  </div>
-                  
-                  {/* Visual Data Components */}
-                  {message.visualData && (
-                    <div className="w-full overflow-hidden">
-                      {message.visualData.type === 'funnel' && (
-                        <FunnelVisualization 
-                          data={message.visualData.data}
-                          title="Performance Metrics"
-                        />
-                      )}
-
-                      {message.visualData.type === 'table' && (
-                        <DataTable 
-                          data={Array.isArray(message.visualData.data) ? message.visualData.data : [message.visualData.data]}
-                          title="Query Results"
-                        />
-                      )}
+                  {message.type === 'user' && (
+                    <div className="rounded-lg px-3 py-2 text-sm bg-primary text-primary-foreground">
+                      {message.content}
                     </div>
+                  )}
+                  
+                  {/* Visual Data - Funnel Visualization */}
+                  {message.visualData && message.visualData.type === 'funnel' && (
+                    <div className="w-full max-w-md">
+                      <FunnelVisualization 
+                        data={message.visualData.data}
+                        title={message.content}
+                      />
+                    </div>
+                  )}
+
+                  {/* Dimensional Follow-ups */}
+                  {message.dimensions && message.originalQuery && (
+                    <DimensionalFollowUps 
+                      availableDimensions={message.dimensions}
+                      onDimensionSelect={(dimension, value) => 
+                        handleDimensionSelect(dimension, value, message.originalQuery)
+                      }
+                      className="w-full max-w-md"
+                    />
                   )}
                   
                   <div className="text-xs text-muted-foreground">
@@ -217,7 +191,7 @@ export default function ChatBot() {
                     <Bot className="w-4 h-4 text-primary" />
                   </div>
                   <div className="bg-muted rounded-lg p-3">
-                    <p className="text-sm text-muted-foreground">Analyzing your question with AI...</p>
+                    <p className="text-sm text-muted-foreground">Analyzing data...</p>
                   </div>
                 </div>
               </div>
@@ -230,7 +204,7 @@ export default function ChatBot() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Ask me anything about your data... (e.g., 'How does ASG Primary Path perform in Americas?')"
+            placeholder="Ask about your data (e.g., 'How is ASG performing in Americas?')"
             disabled={isLoading}
             className="flex-1"
           />
