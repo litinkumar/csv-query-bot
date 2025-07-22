@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface QueryPlan {
@@ -147,60 +146,69 @@ ACTUAL REGION VALUES IN DATABASE: ${dataValidation.availableRegions.join(', ')}
 ACTUAL PROGRAM VALUES IN DATABASE: ${dataValidation.availablePrograms.join(', ')}
 ACTUAL TIME PERIODS IN DATABASE: ${dataValidation.availableTimeRanges.join(', ')}
 
-CATEGORY VALUES FOR FUNNEL STAGES:
-- Use category_1 column directly without complex filtering
-- Categories include: delivered, opened, clicked, adopted, etc.
+IMPORTANT FUNNEL CATEGORY VALUES IN category_1:
+- delivered: Email delivery count
+- opened: Email open count  
+- clicked: Email click count
+- adopted: Adoption/conversion count
+
+CRITICAL: For dimensional breakdowns, create a query that uses PIVOT logic to show each dimension value with its complete funnel metrics.
 `;
 
     let prompt = '';
     
     if (isDimensionalBreakdown) {
-      prompt = `You are a data analyst AI. Create a query for dimensional breakdown analysis.
+      prompt = `You are a data analyst AI. Create a query for dimensional breakdown analysis that shows COMPLETE funnel metrics for each dimension value.
 
 Query: "${query}"
 
 ${schemaInfo}
 
-For dimensional breakdowns, create a query that returns data grouped by BOTH category_1 AND the dimension:
-- If "by region": GROUP BY category_1, acq_region_1
-- If "by quarter": GROUP BY category_1, send_date_quarter_1  
-- If "by program": GROUP BY category_1, program_name_1
-- If "by spend tier": GROUP BY category_1, spend_tier_grouped_1
+For dimensional breakdowns, create a query that returns separate funnel metrics for EACH dimension value using this EXACT template:
 
-Template for dimensional breakdown:
 SELECT 
-  category_1,
   [dimension_column] as dimension_value,
-  SUM(customers_1) as customers
+  SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries,
+  SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens,
+  SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks,
+  SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions
 FROM "sample_engagement_data" 
 WHERE [your filters here]
-GROUP BY category_1, [dimension_column]
-ORDER BY dimension_value, category_1
+GROUP BY [dimension_column]
+ORDER BY dimension_value
+
+Replace [dimension_column] with:
+- If "by region": acq_region_1
+- If "by quarter": send_date_quarter_1  
+- If "by program": program_name_1
+- If "by spend tier": spend_tier_grouped_1
+
+This will give each dimension value its own complete funnel metrics.
 
 Respond with ONLY a valid JSON object:
 {
   "intent": "brief description",
   "entities": ["key", "entities"],
   "filters": {"key": "value"},
-  "sqlQuery": "SELECT statement with dimensional grouping",
+  "sqlQuery": "SELECT statement with CASE WHEN pivoting",
   "expectedVisualization": "funnel",
   "explanation": "brief explanation"
 }`;
     } else {
-      prompt = `You are a data analyst AI. Create a query that returns funnel metrics (Deliveries, Opens, Clicks, Adoptions) for visualization.
+      prompt = `You are a data analyst AI. Create a query that returns aggregated funnel metrics for visualization.
 
 Query: "${query}"
 
 ${schemaInfo}
 
-Create a simple query that groups by category_1 only:
+Create a query that aggregates all funnel stages using this template:
 SELECT 
-  category_1,
-  SUM(customers_1) as customers
+  SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries,
+  SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens,
+  SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks,
+  SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions
 FROM "sample_engagement_data" 
 WHERE [your filters here]
-GROUP BY category_1
-ORDER BY category_1
 
 Only use exact values from the database. Do not use variations like 'US', 'USA' - use 'Americas' exactly.
 
@@ -209,7 +217,7 @@ Respond with ONLY a valid JSON object:
   "intent": "brief description",
   "entities": ["key", "entities"],
   "filters": {"key": "value"},
-  "sqlQuery": "SELECT statement that groups by category_1",
+  "sqlQuery": "SELECT statement with aggregated funnel metrics",
   "expectedVisualization": "funnel",
   "explanation": "brief explanation"
 }`;
@@ -235,7 +243,7 @@ Respond with ONLY a valid JSON object:
         intent: `Funnel analysis for: ${query}`,
         entities: ['ASG', 'Americas'],
         filters: { program: 'ASG', region: 'Americas' },
-        sqlQuery: `SELECT category_1, SUM(customers_1) as customers FROM "sample_engagement_data" WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') AND acq_region_1 = 'Americas' GROUP BY category_1 ORDER BY category_1`,
+        sqlQuery: `SELECT SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries, SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens, SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks, SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions FROM "sample_engagement_data" WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') AND acq_region_1 = 'Americas'`,
         expectedVisualization: "funnel" as const,
         explanation: "Fallback: Showing ASG funnel metrics in Americas"
       };
@@ -257,13 +265,14 @@ Respond with ONLY a valid JSON object:
       const actualData = queryResponse?.data || [];
       console.log('✅ Query results:', actualData);
 
-      // Check if this is dimensional data (has multiple dimensions)
-      const hasDimensionalData = actualData.some(row => row.dimension_value !== undefined);
+      // Check if this is dimensional data (has dimension_value column)
+      const hasDimensionalData = actualData.length > 0 && actualData[0].dimension_value !== undefined;
       
       if (hasDimensionalData) {
-        // Process dimensional data
+        // Process dimensional data - each row is a complete funnel for one dimension value
+        console.log('📊 Processing dimensional data');
         const dimensionalData = this.processDimensionalData(actualData);
-        console.log('📊 Dimensional data:', dimensionalData);
+        console.log('📊 Processed dimensional data:', dimensionalData);
 
         return {
           answer: plan.intent,
@@ -280,9 +289,10 @@ Respond with ONLY a valid JSON object:
           insights: []
         };
       } else {
-        // Process single funnel data
+        // Process single aggregated funnel data
+        console.log('📊 Processing single funnel data');
         const funnelData = this.prepareFunnelData(actualData);
-        console.log('📊 Funnel data:', funnelData);
+        console.log('📊 Processed funnel data:', funnelData);
 
         return {
           answer: plan.intent,
@@ -344,6 +354,23 @@ Respond with ONLY a valid JSON object:
   }
 
   private static prepareFunnelData(data: any[]): any {
+    console.log('🔄 Processing funnel data:', data);
+    
+    // For aggregated queries, data should be a single row with deliveries, opens, clicks, adoptions
+    if (data.length === 1 && data[0].deliveries !== undefined) {
+      const row = data[0];
+      const funnelData = {
+        deliveries: row.deliveries || 0,
+        opens: row.opens || 0,
+        clicks: row.clicks || 0,
+        adoptions: row.adoptions || 0
+      };
+      
+      console.log('📊 Direct funnel data:', funnelData);
+      return this.calculateRates(funnelData);
+    }
+
+    // Fallback: try to aggregate from category_1 rows (legacy support)
     const funnelData = { 
       deliveries: 0, 
       opens: 0, 
@@ -351,11 +378,8 @@ Respond with ONLY a valid JSON object:
       adoptions: 0 
     };
     
-    console.log('🔄 Processing funnel data:', data);
-    
     data.forEach(row => {
       const category = row.category_1?.toLowerCase() || '';
-      // Handle different possible field names for customer count
       const customers = row.customers || row.total_customers || row.customers_1 || 0;
       
       console.log(`Processing row: category=${category}, customers=${customers}`);
@@ -371,9 +395,34 @@ Respond with ONLY a valid JSON object:
       }
     });
 
-    console.log('📊 Final funnel data:', funnelData);
+    console.log('📊 Aggregated funnel data:', funnelData);
+    return this.calculateRates(funnelData);
+  }
 
-    // Calculate rates
+  private static processDimensionalData(data: any[]): any {
+    console.log('🔄 Processing dimensional data:', data);
+    
+    // Each row should already have complete funnel metrics for one dimension value
+    const processedData: Record<string, any> = {};
+    
+    data.forEach(row => {
+      const dimensionValue = row.dimension_value || 'Unknown';
+      const funnelData = {
+        deliveries: row.deliveries || 0,
+        opens: row.opens || 0,
+        clicks: row.clicks || 0,
+        adoptions: row.adoptions || 0
+      };
+      
+      console.log(`Processing dimension ${dimensionValue}:`, funnelData);
+      processedData[dimensionValue] = this.calculateRates(funnelData);
+    });
+
+    console.log('📊 Final processed dimensional data:', processedData);
+    return processedData;
+  }
+
+  private static calculateRates(funnelData: any): any {
     const openRate = funnelData.deliveries > 0 ? (funnelData.opens / funnelData.deliveries) * 100 : 0;
     const clickThroughRate = funnelData.deliveries > 0 ? (funnelData.clicks / funnelData.deliveries) * 100 : 0;
     const clickThroughOpenRate = funnelData.opens > 0 ? (funnelData.clicks / funnelData.opens) * 100 : 0;
@@ -386,27 +435,6 @@ Respond with ONLY a valid JSON object:
       clickThroughOpenRate,
       adoptionRate
     };
-  }
-
-  private static processDimensionalData(data: any[]): any {
-    // Group data by dimension value
-    const dimensionGroups: Record<string, any[]> = {};
-    
-    data.forEach(row => {
-      const dimensionValue = row.dimension_value || 'Unknown';
-      if (!dimensionGroups[dimensionValue]) {
-        dimensionGroups[dimensionValue] = [];
-      }
-      dimensionGroups[dimensionValue].push(row);
-    });
-
-    // Process each dimension group into funnel data
-    const processedData: Record<string, any> = {};
-    Object.entries(dimensionGroups).forEach(([dimensionValue, rows]) => {
-      processedData[dimensionValue] = this.prepareFunnelData(rows);
-    });
-
-    return processedData;
   }
 
   static async generateDataExploration(context: string[]): Promise<string[]> {
