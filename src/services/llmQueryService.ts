@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface QueryPlan {
@@ -128,16 +129,20 @@ Respond with ONLY the JSON object, no other text.`;
       }
 
       // Extract the actual data from the edge function response
-      // The edge function returns the data directly as an array
-      const actualData = Array.isArray(queryResponse) ? queryResponse : [];
+      // The edge function returns { data: [rows] }, so we need to access the data property
+      const actualData = queryResponse?.data || [];
       console.log('Extracted data:', actualData);
+
+      // Ensure actualData is an array
+      const safeData = Array.isArray(actualData) ? actualData : [];
+      console.log('Safe data array:', safeData, 'Length:', safeData.length);
 
       // Generate intelligent response with Gemini
       const responsePrompt = `You are a helpful data analyst powered by Google Gemini. Based on the following query results, provide insights and analysis.
 
 Original Query Intent: "${plan.intent}"
-Data Results (showing first 5 rows): ${JSON.stringify(actualData.slice(0, 5))}
-Total Records Found: ${actualData.length}
+Data Results (showing first 5 rows): ${JSON.stringify(safeData.slice(0, 5))}
+Total Records Found: ${safeData.length}
 
 Provide a natural language response that:
 1. Directly answers the user's question with specific numbers and insights
@@ -148,7 +153,7 @@ Respond with ONLY a valid JSON object in this format:
 {
   "answer": "natural language answer with specific insights and numbers from the data",
   "insights": ["key insight 1 with specific data", "key insight 2 with specific data"],
-  "followUps": ["follow up question 1", "follow up question 2", "follow up question 3"]
+  "follow_ups": ["follow up question 1", "follow up question 2", "follow up question 3"]
 }
 
 Respond with ONLY the JSON object, no other text.`;
@@ -161,28 +166,28 @@ Respond with ONLY the JSON object, no other text.`;
 
       // Prepare visualization data
       let visualData = null;
-      if (plan.expectedVisualization === 'funnel' && actualData.length > 0) {
+      if (plan.expectedVisualization === 'funnel' && safeData.length > 0) {
         visualData = {
           type: 'funnel',
-          data: this.prepareFunnelData(actualData)
+          data: this.prepareFunnelData(safeData)
         };
-      } else if (plan.expectedVisualization === 'table' && actualData.length > 0) {
+      } else if (plan.expectedVisualization === 'table' && safeData.length > 0) {
         visualData = {
           type: 'table',
-          data: actualData
+          data: safeData
         };
       }
 
       return {
-        answer: parsedResponse.answer || `Found ${actualData.length} results for: ${plan.intent}`,
-        data: actualData,
+        answer: parsedResponse.answer || `Found ${safeData.length} results for: ${plan.intent}`,
+        data: safeData,
         visualData,
-        followUps: parsedResponse.followUps || [
+        followUps: parsedResponse.followUps || parsedResponse.follow_ups || [
           "What other insights can you show me?",
           "How does this compare to other segments?",
           "Show me more detailed breakdowns"
         ],
-        insights: parsedResponse.insights || [`Found ${actualData.length} records matching your criteria`]
+        insights: parsedResponse.insights || [`Found ${safeData.length} records matching your criteria`]
       };
 
     } catch (error) {
