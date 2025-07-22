@@ -110,24 +110,34 @@ Respond with ONLY the JSON object, no other text.`;
       console.log('Executing query plan:', plan);
       
       // Execute the SQL query using the safe query function
-      const { data: queryData, error } = await supabase.functions.invoke('execute-query', {
+      const { data: queryResponse, error } = await supabase.functions.invoke('execute-query', {
         body: { query: plan.sqlQuery }
       });
+
+      console.log('Edge function response:', queryResponse);
 
       if (error) {
         console.error('Query execution error:', error);
         throw error;
       }
 
-      // Ensure queryData is an array
-      const safeQueryData = Array.isArray(queryData) ? queryData : [];
+      // Check if the response contains an error
+      if (queryResponse?.error) {
+        console.error('Database query error:', queryResponse);
+        throw new Error(queryResponse.message || 'Database query failed');
+      }
+
+      // Extract the actual data from the edge function response
+      // The edge function returns the data directly as an array
+      const actualData = Array.isArray(queryResponse) ? queryResponse : [];
+      console.log('Extracted data:', actualData);
 
       // Generate intelligent response with Gemini
       const responsePrompt = `You are a helpful data analyst powered by Google Gemini. Based on the following query results, provide insights and analysis.
 
 Original Query Intent: "${plan.intent}"
-Data Results (showing first 5 rows): ${JSON.stringify(safeQueryData.slice(0, 5))}
-Total Records Found: ${safeQueryData.length}
+Data Results (showing first 5 rows): ${JSON.stringify(actualData.slice(0, 5))}
+Total Records Found: ${actualData.length}
 
 Provide a natural language response that:
 1. Directly answers the user's question with specific numbers and insights
@@ -151,28 +161,28 @@ Respond with ONLY the JSON object, no other text.`;
 
       // Prepare visualization data
       let visualData = null;
-      if (plan.expectedVisualization === 'funnel' && safeQueryData.length > 0) {
+      if (plan.expectedVisualization === 'funnel' && actualData.length > 0) {
         visualData = {
           type: 'funnel',
-          data: this.prepareFunnelData(safeQueryData)
+          data: this.prepareFunnelData(actualData)
         };
-      } else if (plan.expectedVisualization === 'table' && safeQueryData.length > 0) {
+      } else if (plan.expectedVisualization === 'table' && actualData.length > 0) {
         visualData = {
           type: 'table',
-          data: safeQueryData
+          data: actualData
         };
       }
 
       return {
-        answer: parsedResponse.answer || `Found ${safeQueryData.length} results for: ${plan.intent}`,
-        data: safeQueryData,
+        answer: parsedResponse.answer || `Found ${actualData.length} results for: ${plan.intent}`,
+        data: actualData,
         visualData,
         followUps: parsedResponse.followUps || [
           "What other insights can you show me?",
           "How does this compare to other segments?",
           "Show me more detailed breakdowns"
         ],
-        insights: parsedResponse.insights || [`Found ${safeQueryData.length} records matching your criteria`]
+        insights: parsedResponse.insights || [`Found ${actualData.length} records matching your criteria`]
       };
 
     } catch (error) {
