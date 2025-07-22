@@ -37,11 +37,11 @@ export class LLMQueryService {
     const schemaInfo = `
 Available data schema:
 - Table: Onboarding_Dunmmy_Data
-- Columns: customers_1, campaign_id_1, lesson_number_1, funnel_order_1, category_1, lesson_name_1, program_name_1, send_date_quarter_1, acq_region_1, country_code_1, language_1
-- Programs: ASG Primary Path, LPW Path  
-- Regions: Americas, Europe, Asia Pacific, Latin America, Africa
-- Categories: Delivered, Opened, Clicked
-- Sample quarters: 2024-Q1, 2024-Q2, 2024-Q3, 2024-Q4
+- Columns: customers_1, campaign_id_1, lesson_number_1, funnel_order_1, spend_tier_grouped_1, assignment_status_1, category_1, lesson_name_1, program_name_1, primary_product_1, send_date_quarter_1, send_date_week_1, send_date_1, acq_region_1, country_code_1, language_1
+- Programs: ASG Primary Path, LPW Path, MCG ASG Path, PMax ASG Path
+- Regions: Americas, EMEA, APAC
+- Categories: Deliveries, Opens, Clicks
+- Sample quarters: 2024-Q1, 2024-Q2, 2024-Q3, 2024-Q4, 2025-Q1, 2025-Q2, 2025-Q3
 `;
 
     const prompt = `You are a data analyst AI powered by Google Gemini. Analyze this natural language query and create a structured query plan.
