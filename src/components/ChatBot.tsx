@@ -151,19 +151,26 @@ export default function ChatBot() {
                     ? 'items-end max-w-[80%]' 
                     : 'items-start w-full'
                 }`}>
-                  {message.type === 'user' && (
+                  {message.type === 'user' ? (
                     <div className="rounded-lg px-3 py-2 text-sm bg-primary text-primary-foreground">
                       {message.content}
                     </div>
-                  )}
-                  
-                  {/* Visual Data - Funnel Visualization */}
-                  {message.visualData && message.visualData.type === 'funnel' && (
-                    <div className="w-full max-w-md">
-                      <FunnelVisualization 
-                        data={message.visualData.data}
-                        title={message.content}
-                      />
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Bot text content */}
+                      <div className="rounded-lg px-3 py-2 text-sm bg-muted text-foreground">
+                        {message.content}
+                      </div>
+                      
+                      {/* Visual Data - Funnel Visualization */}
+                      {message.visualData && message.visualData.type === 'funnel' && (
+                        <div className="w-full max-w-md">
+                          <FunnelVisualization 
+                            data={message.visualData.data}
+                            title=""
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
