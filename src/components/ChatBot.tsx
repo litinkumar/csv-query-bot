@@ -9,6 +9,10 @@ import { toast } from "@/hooks/use-toast";
 import { FunnelVisualization } from "./FunnelVisualization";
 import { RegionalFunnelChart } from "./RegionalFunnelChart";
 import { FunnelComparison } from "./FunnelComparison";
+import { useConversationContext, ConversationTurn } from "../hooks/useConversationContext";
+import { QueryAnalyzer } from "../utils/queryAnalyzer";
+import { DataProcessor } from "../utils/dataProcessor";
+import { DataTable } from "./DataTable";
 
 interface Message {
   id: string;
@@ -16,7 +20,7 @@ interface Message {
   content: string;
   timestamp: Date;
   visualData?: {
-    type: 'funnel' | 'comparison' | 'regional';
+    type: 'funnel' | 'comparison' | 'regional' | 'table';
     data: any;
   };
 }
@@ -70,12 +74,14 @@ export default function ChatBot() {
     {
       id: '1',
       type: 'bot',
-      content: 'Hi! I can help you analyze your marketing funnel performance. Try asking about:\n\n• "Compare ASG Primary Path with LPW Path funnel performance"\n• "How is ASG Primary Path funnel performing in Q3?"\n• "Show me Product Feed Optimisation funnel metrics"\n• "Give me total deliveries, opens, and clicks for LPW Path"\n\nI\'ll show you key metrics like Open Rate, Click Through Rate, and Click Through Open Rate for data-driven insights!',
+      content: 'Hi! I\'m your marketing analytics assistant. I can help you analyze your data in many ways:\n\n**📊 What I can analyze:**\n• Program & lesson performance\n• Regional & geographic breakdowns\n• Time-based trends and comparisons\n• Campaign effectiveness\n• Customer segmentation\n• Funnel metrics and conversions\n\n**💬 Try asking:**\n• "Show me performance by region"\n• "How did Q3 compare to Q2?"\n• "Which programs perform best?"\n• "Break down results by spend tier"\n• "What trends do you see over time?"\n\nI\'ll remember our conversation context for follow-up questions!',
       timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  const { addTurn, getRecentContext, findRelevantContext } = useConversationContext();
 
   const getCurrentQuarter = () => {
     const now = new Date();
@@ -463,6 +469,119 @@ export default function ChatBot() {
     }
   };
 
+  const processEnhancedQuery = async (query: string): Promise<string | { text: string; visualData?: any }> => {
+    try {
+      console.log('Processing enhanced query:', query);
+      
+      // Get conversation context
+      const recentContext = getRecentContext(3);
+      
+      // Analyze the query
+      const queryContext = await QueryAnalyzer.analyzeQuery(query, recentContext);
+      console.log('Query context:', queryContext);
+      
+      // Check if this is a follow-up question
+      const isFollowUp = this.isFollowUpQuestion(query);
+      if (isFollowUp) {
+        const relevantContext = findRelevantContext(query);
+        console.log('Found relevant context:', relevantContext);
+      }
+      
+      // Check for specific funnel queries (maintain existing functionality)
+      if (queryContext.type === 'funnel' || queryContext.entities.length > 0) {
+        return await this.processFunnelQuery(query, queryContext);
+      }
+      
+      // Process with new enhanced capabilities
+      const processedData = await DataProcessor.processQuery(queryContext, query);
+      
+      // Generate response
+      let response = this.generateEnhancedResponse(processedData, queryContext);
+      
+      // Add conversation turn
+      const turn: ConversationTurn = {
+        userQuery: query,
+        botResponse: typeof response === 'string' ? response : response.text,
+        queryContext,
+        timestamp: new Date()
+      };
+      addTurn(turn);
+      
+      return response;
+      
+    } catch (error) {
+      console.error('Error processing enhanced query:', error);
+      return `I encountered an error analyzing your question. Could you try rephrasing it? For example:\n\n• "Show me program performance"\n• "Break down by region"\n• "Compare Q3 to Q2"\n• "Which campaigns work best?"`;
+    }
+  };
+
+  private isFollowUpQuestion = (query: string): boolean => {
+    const followUpIndicators = ['that', 'this', 'it', 'those', 'these', 'also', 'too', 'as well', 'more about'];
+    const lowerQuery = query.toLowerCase();
+    return followUpIndicators.some(indicator => lowerQuery.includes(indicator));
+  };
+
+  private processFunnelQuery = async (query: string, queryContext: any) => {
+    // Use existing funnel processing logic
+    return await this.processUserQuery(query);
+  };
+
+  private generateEnhancedResponse = (processedData: any, queryContext: any): string | { text: string; visualData?: any } => {
+    let response = '';
+    
+    // Generate contextual response based on query type
+    switch (queryContext.type) {
+      case 'segmentation':
+        response = `📊 **Segmentation Analysis**\n\n`;
+        response += `Here's how your data breaks down by ${queryContext.dimensions.join(', ')}:\n\n`;
+        break;
+      case 'geographic':
+        response = `🌍 **Geographic Analysis**\n\n`;
+        response += `Regional performance breakdown:\n\n`;
+        break;
+      case 'trend':
+        response = `📈 **Trend Analysis**\n\n`;
+        response += `Here's how performance has changed over time:\n\n`;
+        break;
+      case 'campaign':
+        response = `📧 **Campaign Analysis**\n\n`;
+        response += `Campaign performance insights:\n\n`;
+        break;
+      default:
+        response = `🔍 **Data Analysis Results**\n\n`;
+    }
+    
+    // Add insights
+    if (processedData.insights.length > 0) {
+      response += `**Key Insights:**\n`;
+      processedData.insights.forEach((insight: string) => {
+        response += `• ${insight}\n`;
+      });
+      response += '\n';
+    }
+    
+    // Add follow-up suggestions
+    if (processedData.followUpSuggestions.length > 0) {
+      response += `**Want to explore more?**\n`;
+      processedData.followUpSuggestions.forEach((suggestion: string) => {
+        response += `• ${suggestion}\n`;
+      });
+    }
+    
+    // Return with visualization data if applicable
+    if (processedData.type === 'chart') {
+      return {
+        text: response,
+        visualData: {
+          type: 'table',
+          data: processedData.data
+        }
+      };
+    }
+    
+    return response;
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
@@ -478,7 +597,8 @@ export default function ChatBot() {
     setIsLoading(true);
 
     try {
-      const botResponse = await processUserQuery(input);
+      // Use enhanced query processing
+      const botResponse = await processEnhancedQuery(input);
       
       let botMessage: Message;
       
@@ -574,6 +694,13 @@ export default function ChatBot() {
                         <FunnelComparison 
                           performance1={message.visualData.data.performance1}
                           performance2={message.visualData.data.performance2}
+                        />
+                      )}
+
+                      {message.visualData.type === 'table' && (
+                        <DataTable 
+                          data={message.visualData.data}
+                          title="Data Table"
                         />
                       )}
                     </div>
