@@ -157,7 +157,7 @@ export default function ChatBot() {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto h-[600px] flex flex-col bg-background border border-border shadow-sm">
+    <div className="w-full max-w-4xl mx-auto h-[600px] flex flex-col bg-background shadow-sm">
       <div className="flex-1 flex flex-col gap-4 p-6">
         <ScrollArea className="flex-1 pr-4">
           <div className="space-y-4">
