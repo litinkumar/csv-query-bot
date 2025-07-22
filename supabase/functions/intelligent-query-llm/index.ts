@@ -1,7 +1,6 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,48 +14,52 @@ serve(async (req) => {
 
   try {
     const { prompt } = await req.json();
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 
-    if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured');
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured');
     }
 
-    console.log('Processing LLM request with prompt length:', prompt.length);
+    console.log('Processing LLM request with Gemini, prompt length:', prompt.length);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Use Gemini 1.5 Flash for fast and cost-effective processing
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a specialized data analyst AI. You analyze natural language queries about customer onboarding data and provide structured responses. Always respond with valid JSON only.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 2000
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2000,
+          topP: 0.8,
+          topK: 40
+        }
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Gemini API error:', response.status, errorText);
+      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    const llmResponse = data.choices[0].message.content;
+    
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new Error('No response generated from Gemini');
+    }
 
-    console.log('LLM response received, length:', llmResponse.length);
+    const geminiResponse = data.candidates[0].content.parts[0].text;
+    console.log('Gemini response received, length:', geminiResponse.length);
 
     return new Response(
-      JSON.stringify({ response: llmResponse }),
+      JSON.stringify({ response: geminiResponse }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

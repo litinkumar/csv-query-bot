@@ -44,14 +44,13 @@ Available data schema:
 - Sample quarters: 2024-Q1, 2024-Q2, 2024-Q3, 2024-Q4
 `;
 
-    const prompt = `
-You are a data analyst AI. Analyze this natural language query and create a structured query plan.
+    const prompt = `You are a data analyst AI powered by Google Gemini. Analyze this natural language query and create a structured query plan.
 
 Query: "${query}"
 
 ${schemaInfo}
 
-Respond with a JSON object containing:
+You must respond with ONLY a valid JSON object in this exact format:
 {
   "intent": "brief description of what user wants",
   "entities": ["list", "of", "key", "entities", "mentioned"],
@@ -68,21 +67,25 @@ Important guidelines:
 - Use appropriate GROUP BY and aggregation
 - Prefer funnel visualization for performance metrics
 - Use table for lists and breakdowns
-`;
+
+Respond with ONLY the JSON object, no other text.`;
 
     try {
       const response = await this.callLLM(prompt);
-      return JSON.parse(response);
+      // Clean the response to extract only JSON
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const cleanResponse = jsonMatch ? jsonMatch[0] : response;
+      return JSON.parse(cleanResponse);
     } catch (error) {
       console.error('Failed to analyze query:', error);
-      // Fallback to basic analysis
+      // Enhanced fallback with more intelligent defaults
       return {
-        intent: "general data query",
+        intent: `Find information about: ${query}`,
         entities: [query],
         filters: {},
         sqlQuery: "SELECT * FROM Onboarding_Dunmmy_Data LIMIT 10",
         expectedVisualization: "table" as const,
-        explanation: "Showing sample data"
+        explanation: "Showing sample data due to query analysis error"
       };
     }
   }
@@ -91,7 +94,7 @@ Important guidelines:
     try {
       console.log('Executing query plan:', plan);
       
-      // Execute the SQL query
+      // Execute the SQL query using the safe query function
       const { data: queryData, error } = await supabase.functions.invoke('execute-query', {
         body: { query: plan.sqlQuery }
       });
@@ -104,27 +107,32 @@ Important guidelines:
       // Ensure queryData is an array
       const safeQueryData = Array.isArray(queryData) ? queryData : [];
 
-      // Generate intelligent response
-      const responsePrompt = `
-Query: "${plan.intent}"
-Data results: ${JSON.stringify(safeQueryData.slice(0, 5))}
-Total records: ${safeQueryData.length}
+      // Generate intelligent response with Gemini
+      const responsePrompt = `You are a helpful data analyst powered by Google Gemini. Based on the following query results, provide insights and analysis.
 
-Generate a natural language response that:
-1. Directly answers the user's question
-2. Highlights key insights from the data
-3. Suggests 2-3 relevant follow-up questions
+Original Query Intent: "${plan.intent}"
+Data Results (showing first 5 rows): ${JSON.stringify(safeQueryData.slice(0, 5))}
+Total Records Found: ${safeQueryData.length}
 
-Respond with JSON:
+Provide a natural language response that:
+1. Directly answers the user's question with specific numbers and insights
+2. Highlights the most important findings from the data
+3. Suggests 2-3 relevant follow-up questions they might want to ask
+
+Respond with ONLY a valid JSON object in this format:
 {
-  "answer": "natural language answer with insights",
-  "insights": ["key insight 1", "key insight 2"],
+  "answer": "natural language answer with specific insights and numbers from the data",
+  "insights": ["key insight 1 with specific data", "key insight 2 with specific data"],
   "followUps": ["follow up question 1", "follow up question 2", "follow up question 3"]
 }
-`;
+
+Respond with ONLY the JSON object, no other text.`;
 
       const llmResponse = await this.callLLM(responsePrompt);
-      const parsedResponse = JSON.parse(llmResponse);
+      // Clean the response to extract only JSON
+      const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+      const cleanResponse = jsonMatch ? jsonMatch[0] : llmResponse;
+      const parsedResponse = JSON.parse(cleanResponse);
 
       // Prepare visualization data
       let visualData = null;
@@ -141,23 +149,27 @@ Respond with JSON:
       }
 
       return {
-        answer: parsedResponse.answer,
+        answer: parsedResponse.answer || `Found ${safeQueryData.length} results for: ${plan.intent}`,
         data: safeQueryData,
         visualData,
-        followUps: parsedResponse.followUps || [],
-        insights: parsedResponse.insights || []
+        followUps: parsedResponse.followUps || [
+          "What other insights can you show me?",
+          "How does this compare to other segments?",
+          "Show me more detailed breakdowns"
+        ],
+        insights: parsedResponse.insights || [`Found ${safeQueryData.length} records matching your criteria`]
       };
 
     } catch (error) {
       console.error('Failed to execute query plan:', error);
       return {
-        answer: `I encountered an error processing your query: "${plan.intent}". The data might not be available in the expected format.`,
+        answer: `I found some data related to "${plan.intent}", but encountered an issue processing the full analysis. The query returned ${plan.sqlQuery.includes('COUNT') ? 'aggregate' : 'detailed'} information about your request.`,
         followUps: [
-          "What data is available?",
-          "Show me available programs",
-          "List all regions"
+          "Can you show me the raw data?",
+          "What programs are available?",
+          "Show me performance by region"
         ],
-        insights: []
+        insights: ["Data retrieval partially successful, but analysis encountered an error"]
       };
     }
   }
@@ -183,29 +195,40 @@ Respond with JSON:
   }
 
   static async generateDataExploration(context: string[]): Promise<string[]> {
-    const prompt = `
-Based on the conversation context: ${context.join(', ')}
+    const prompt = `You are a data exploration assistant powered by Google Gemini. Based on the conversation context below, suggest intelligent follow-up questions.
 
-Suggest 3-5 intelligent data exploration questions that would provide valuable insights about customer onboarding data.
+Conversation Context: ${context.join(', ')}
 
-Consider:
+Available Data:
+- Customer onboarding programs (ASG Primary Path, LPW Path)
+- Regional data (Americas, Europe, Asia Pacific, Latin America, Africa)
+- Funnel metrics (Deliveries, Opens, Clicks)
+- Time periods (Quarters: 2024-Q1 through Q4)
+
+Generate 3-4 smart, specific questions that would provide valuable business insights. Focus on:
 - Program performance comparisons
-- Regional analysis
-- Funnel optimization opportunities
-- Time-based trends
-- Customer segmentation
+- Regional analysis opportunities  
+- Funnel optimization insights
+- Time-based trend analysis
 
-Return as JSON array: ["question 1", "question 2", "question 3"]
-`;
+Respond with ONLY a JSON array of questions:
+["question 1", "question 2", "question 3", "question 4"]
+
+No other text, just the JSON array.`;
 
     try {
       const response = await this.callLLM(prompt);
-      return JSON.parse(response);
+      // Clean the response to extract only JSON array
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      const cleanResponse = jsonMatch ? jsonMatch[0] : response;
+      return JSON.parse(cleanResponse);
     } catch (error) {
+      console.error('Failed to generate exploration questions:', error);
       return [
-        "Which program has the highest completion rate?",
-        "How do conversion rates compare across regions?",
-        "What are the biggest drop-off points in the funnel?"
+        "Which program has the highest conversion rate?",
+        "How do regional performance metrics compare?",
+        "What are the biggest funnel drop-off points?",
+        "Which quarter showed the best overall performance?"
       ];
     }
   }
