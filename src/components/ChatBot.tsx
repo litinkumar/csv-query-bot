@@ -1,8 +1,6 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -159,14 +157,8 @@ export default function ChatBot() {
   };
 
   return (
-    <Card className="w-full max-w-4xl mx-auto h-[600px] flex flex-col outline-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bot className="w-6 h-6" />
-          AI-Powered Data Assistant
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex-1 flex flex-col gap-4">
+    <div className="w-full max-w-4xl mx-auto h-[600px] flex flex-col bg-background border border-border shadow-sm">
+      <div className="flex-1 flex flex-col gap-4 p-6">
         <ScrollArea className="flex-1 pr-4">
           <div className="space-y-4">
             {messages.map((message) => (
@@ -176,7 +168,7 @@ export default function ChatBot() {
                 <div className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md ${
                   message.type === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}>
-                  {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                  {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4 text-primary" />}
                 </div>
                 <div className={`flex flex-col gap-3 ${
                   message.type === 'user' 
@@ -222,7 +214,7 @@ export default function ChatBot() {
               <div className="flex gap-3 justify-start">
                 <div className="flex gap-2">
                   <div className="w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
-                    <Bot className="w-4 h-4" />
+                    <Bot className="w-4 h-4 text-primary" />
                   </div>
                   <div className="bg-muted rounded-lg p-3">
                     <p className="text-sm text-muted-foreground">Analyzing your question with AI...</p>
@@ -250,7 +242,7 @@ export default function ChatBot() {
             <Send className="w-4 h-4" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
