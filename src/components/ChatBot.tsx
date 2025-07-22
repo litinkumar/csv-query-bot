@@ -1,18 +1,15 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { FunnelVisualization } from "./FunnelVisualization";
-import { RegionalFunnelChart } from "./RegionalFunnelChart";
-import { FunnelComparison } from "./FunnelComparison";
-import { useConversationContext, ConversationTurn } from "../hooks/useConversationContext";
-import { QueryAnalyzer } from "../utils/queryAnalyzer";
-import { DataProcessor } from "../utils/dataProcessor";
 import { DataTable } from "./DataTable";
+import { IntelligentQueryProcessor } from "../utils/intelligentQueryProcessor";
+import { useIntelligentMemory } from "../hooks/useIntelligentMemory";
 
 interface Message {
   id: string;
@@ -20,566 +17,98 @@ interface Message {
   content: string;
   timestamp: Date;
   visualData?: {
-    type: 'funnel' | 'comparison' | 'regional' | 'table';
+    type: 'funnel' | 'table' | 'chart';
     data: any;
   };
 }
-
-interface FunnelData {
-  deliveries: number;
-  opens: number;
-  clicks: number;
-  openRate: number;
-  clickThroughRate: number;
-  clickThroughOpenRate: number;
-}
-
-interface FunnelPerformance {
-  name: string;
-  type: 'program' | 'lesson';
-  totalFunnel: FunnelData;
-  regionBreakdown: Record<string, FunnelData>;
-  timeFilter?: string;
-}
-
-// Program name mappings and aliases
-const PROGRAM_ALIASES = {
-  'asg primary path': 'ASG Primary Path',
-  'asg primary': 'ASG Primary Path',
-  'asg': 'ASG Primary Path',
-  'lwp path': 'LPW Path',
-  'lwp': 'LPW Path',
-  'learning path': 'LPW Path',
-  'primary path': 'ASG Primary Path'
-};
-
-// Month to quarter mapping
-const MONTH_TO_QUARTER = {
-  'january': 'Q1', 'jan': 'Q1',
-  'february': 'Q1', 'feb': 'Q1',
-  'march': 'Q1', 'mar': 'Q1',
-  'april': 'Q2', 'apr': 'Q2',
-  'may': 'Q2',
-  'june': 'Q2', 'jun': 'Q2',
-  'july': 'Q3', 'jul': 'Q3',
-  'august': 'Q3', 'aug': 'Q3',
-  'september': 'Q3', 'sep': 'Q3', 'sept': 'Q3',
-  'october': 'Q4', 'oct': 'Q4',
-  'november': 'Q4', 'nov': 'Q4',
-  'december': 'Q4', 'dec': 'Q4'
-};
 
 export default function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'bot',
-      content: 'Hi! I\'m your marketing analytics assistant. I can help you analyze your data in many ways:\n\n**📊 What I can analyze:**\n• Program & lesson performance\n• Regional & geographic breakdowns\n• Time-based trends and comparisons\n• Campaign effectiveness\n• Customer segmentation\n• Funnel metrics and conversions\n\n**💬 Try asking:**\n• "Show me performance by region"\n• "How did Q3 compare to Q2?"\n• "Which programs perform best?"\n• "Break down results by spend tier"\n• "What trends do you see over time?"\n\nI\'ll remember our conversation context for follow-up questions!',
+      content: 'Hi! I\'m your intelligent data assistant. I can answer questions about your marketing data in natural language.\n\n**Try asking me things like:**\n• "What are the different lessons in ASG Primary Path?"\n• "How many customers do we have in each region?"\n• "Which programs perform best?"\n• "Show me performance metrics for LWP Path"\n• "How many total customers clicked in Q3?"\n\nI understand natural language and will give you direct answers to your questions!',
       timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { addTurn, getRecentContext, findRelevantContext } = useConversationContext();
+  const { addQuestion, updateContext, getRelevantContext, generateSmartFollowUps } = useIntelligentMemory();
 
-  const getCurrentQuarter = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const quarter = Math.ceil(month / 3);
-    return `${year}-Q${quarter}`;
-  };
-
-  const extractTimeFilter = (query: string) => {
-    const lowerQuery = query.toLowerCase();
-    console.log('Extracting time filter from:', query);
-    
-    // Check for specific quarters
-    const quarterMatch = lowerQuery.match(/q([1-4])|quarter\s*([1-4])/);
-    if (quarterMatch) {
-      const quarter = quarterMatch[1] || quarterMatch[2];
-      const year = new Date().getFullYear();
-      const timeFilter = `${year}-Q${quarter}`;
-      console.log('Found quarter:', timeFilter);
-      return timeFilter;
-    }
-    
-    // Check for months
-    for (const [month, quarter] of Object.entries(MONTH_TO_QUARTER)) {
-      if (lowerQuery.includes(month)) {
-        const year = new Date().getFullYear();
-        const timeFilter = `${year}-${quarter}`;
-        console.log('Found month mapping to quarter:', timeFilter);
-        return timeFilter;
-      }
-    }
-    
-    // Check for "this quarter" or current time references
-    if (lowerQuery.includes('this quarter') || lowerQuery.includes('current quarter')) {
-      const timeFilter = getCurrentQuarter();
-      console.log('Using current quarter:', timeFilter);
-      return timeFilter;
-    }
-    
-    console.log('No time filter found, using current quarter');
-    return getCurrentQuarter();
-  };
-
-  const calculateFunnelMetrics = (deliveries: number, opens: number, clicks: number): FunnelData => {
-    const openRate = deliveries > 0 ? (opens / deliveries) * 100 : 0;
-    const clickThroughRate = deliveries > 0 ? (clicks / deliveries) * 100 : 0;
-    const clickThroughOpenRate = opens > 0 ? (clicks / opens) * 100 : 0;
-
-    return {
-      deliveries,
-      opens,
-      clicks,
-      openRate,
-      clickThroughRate,
-      clickThroughOpenRate
-    };
-  };
-
-  const getFunnelDataFromRecords = (records: any[]): FunnelData => {
-    const funnelData = records.reduce((acc, record) => {
-      const category = record.category_1?.toLowerCase() || '';
-      const count = record.customers_1 || 0;
-      
-      if (category.includes('deliver')) {
-        acc.deliveries += count;
-      } else if (category.includes('open')) {
-        acc.opens += count;
-      } else if (category.includes('click')) {
-        acc.clicks += count;
-      }
-      
-      return acc;
-    }, { deliveries: 0, opens: 0, clicks: 0 });
-
-    return calculateFunnelMetrics(funnelData.deliveries, funnelData.opens, funnelData.clicks);
-  };
-
-  const calculateSimilarity = (query: string, target: string): number => {
-    const queryWords = query.toLowerCase().split(/\s+/).filter(word => 
-      !['program', 'programs', 'lesson', 'lessons', 'performance', 'funnel', 'metrics', 'how', 'is', 'doing', 'show', 'me', 'the', 'with', 'vs', 'versus', 'compare', 'comparison', 'give', 'total', 'deliveries', 'opens', 'clicks'].includes(word)
-    );
-    
-    const targetWords = target.toLowerCase().split(/\s+/);
-    
-    // Exact match
-    if (queryWords.join(' ') === targetWords.join(' ')) return 1.0;
-    
-    // Check for exact phrase match
-    const queryPhrase = queryWords.join(' ');
-    const targetPhrase = targetWords.join(' ');
-    if (queryPhrase === targetPhrase) return 1.0;
-    
-    // Partial phrase matching
-    if (queryPhrase.includes(targetPhrase) || targetPhrase.includes(queryPhrase)) return 0.9;
-    
-    // Word-based similarity with scoring
-    let score = 0;
-    let maxPossibleScore = Math.max(queryWords.length, targetWords.length);
-    
-    for (const queryWord of queryWords) {
-      for (const targetWord of targetWords) {
-        if (queryWord === targetWord) {
-          score += 1.0;
-          break;
-        } else if (queryWord.includes(targetWord) || targetWord.includes(queryWord)) {
-          score += 0.8;
-          break;
-        }
-      }
-    }
-    
-    return maxPossibleScore > 0 ? score / maxPossibleScore : 0;
-  };
-
-  const findBestMatches = async (query: string, type: 'lesson' | 'program') => {
-    const column = type === 'lesson' ? 'lesson_name_1' : 'program_name_1';
-    const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
-      .select(column)
-      .not(column, 'is', null);
-    
-    if (error || !data) {
-      console.error('Error fetching data:', error);
-      return [];
-    }
-    
-    const uniqueItems = [...new Set(data.map(item => item[column]).filter(Boolean))];
-    console.log(`Available ${type}s:`, uniqueItems);
-    
-    // Clean query - remove stop words and common terms
-    const cleanQuery = query.toLowerCase()
-      .replace(/\b(program|programs|lesson|lessons|performance|how|is|doing|show|me|the|with|vs|versus|compare|comparison|funnel|metrics|deliveries|opens|clicks|total|give)\b/g, '')
-      .trim();
-    
-    console.log('Clean query:', cleanQuery);
-    
-    // Check aliases first for programs
-    if (type === 'program') {
-      const aliasMatch = PROGRAM_ALIASES[cleanQuery];
-      if (aliasMatch && uniqueItems.includes(aliasMatch)) {
-        console.log('Found alias match:', aliasMatch);
-        return [aliasMatch];
-      }
-    }
-    
-    // Calculate similarity scores
-    const matches = uniqueItems.map(item => ({
-      item,
-      score: calculateSimilarity(cleanQuery, item)
-    }));
-    
-    // Sort by score and filter for reasonable matches
-    const bestMatches = matches
-      .filter(match => match.score > 0.3)
-      .sort((a, b) => b.score - a.score)
-      .map(match => match.item);
-    
-    console.log(`Best ${type} matches:`, bestMatches);
-    return bestMatches;
-  };
-
-  const analyzeFunnelPerformance = async (name: string, type: 'program' | 'lesson', timeFilter?: string): Promise<FunnelPerformance | null> => {
-    console.log(`Analyzing ${type} funnel:`, name, 'for period:', timeFilter);
-    
-    const column = type === 'lesson' ? 'lesson_name_1' : 'program_name_1';
-    let query = supabase
-      .from('Onboarding_Dunmmy_Data')
-      .select('*')
-      .eq(column, name);
-    
-    if (timeFilter) {
-      query = query.eq('send_date_quarter_1', timeFilter);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error(`Error analyzing ${type} funnel:`, error);
-      return null;
-    }
-    
-    if (!data || data.length === 0) {
-      console.log(`No data found for ${type}:`, name);
-      return null;
-    }
-    
-    // Calculate overall funnel metrics
-    const totalFunnel = getFunnelDataFromRecords(data);
-    
-    // Calculate regional breakdown
-    const regionBreakdown: Record<string, FunnelData> = {};
-    const regions = [...new Set(data.map(record => record.acq_region_1).filter(Boolean))];
-    
-    regions.forEach(region => {
-      const regionData = data.filter(record => record.acq_region_1 === region);
-      regionBreakdown[region] = getFunnelDataFromRecords(regionData);
-    });
-    
-    return {
-      name,
-      type,
-      totalFunnel,
-      regionBreakdown,
-      timeFilter
-    };
-  };
-
-  const compareFunnelPerformance = async (name1: string, name2: string, type: 'program' | 'lesson', timeFilter?: string) => {
-    console.log(`Comparing ${type} funnels:`, name1, 'vs', name2);
-    
-    const [perf1, perf2] = await Promise.all([
-      analyzeFunnelPerformance(name1, type, timeFilter),
-      analyzeFunnelPerformance(name2, type, timeFilter)
-    ]);
-    
-    if (!perf1 || !perf2) {
-      console.log('Failed to get funnel data for comparison');
-      return null;
-    }
-    
-    return {
-      performance1: perf1,
-      performance2: perf2
-    };
-  };
-
-  const formatFunnelMetrics = (funnel: FunnelData, name: string): string => {
-    return `**${name}:**
-📧 Deliveries: ${funnel.deliveries.toLocaleString()}
-📖 Opens: ${funnel.opens.toLocaleString()}
-🖱️ Clicks: ${funnel.clicks.toLocaleString()}
-
-📊 **Key Metrics:**
-• Open Rate: ${funnel.openRate.toFixed(1)}% (Opens ÷ Deliveries)
-• Click Through Rate: ${funnel.clickThroughRate.toFixed(1)}% (Clicks ÷ Deliveries)
-• Click Through Open Rate: ${funnel.clickThroughOpenRate.toFixed(1)}% (Clicks ÷ Opens)`;
-  };
-
-  const formatFunnelResponse = (performance: FunnelPerformance): { text: string; visualData: any } => {
-    const { name, type, totalFunnel, regionBreakdown, timeFilter } = performance;
-    const timeContext = timeFilter ? ` in ${timeFilter}` : '';
-    
-    let response = `📊 **${type === 'lesson' ? 'Lesson' : 'Program'} Funnel Analysis**${timeContext}\n\n`;
-    response += `Analyzing funnel performance for **${name}** with visual breakdown below.`;
-    
-    const visualData = {
-      type: 'funnel' as const,
-      data: { performance, showRegional: Object.keys(regionBreakdown).length > 1 }
-    };
-    
-    return { text: response, visualData };
-  };
-
-  const formatFunnelComparison = (comparison: any): { text: string; visualData: any } => {
-    const { performance1, performance2 } = comparison;
-    
-    let response = `📊 **Funnel Performance Comparison**\n\n`;
-    response += `Comparing **${performance1.name}** vs **${performance2.name}** with detailed visual analysis below.`;
-    
-    const visualData = {
-      type: 'comparison' as const,
-      data: comparison
-    };
-    
-    return { text: response, visualData };
-  };
-
-  const processUserQuery = async (query: string): Promise<string | { text: string; visualData: any }> => {
+  const processIntelligentQuery = async (query: string): Promise<string | { text: string; visualData?: any }> => {
     try {
-      console.log('Processing query:', query);
-      const lowerQuery = query.toLowerCase();
+      console.log('Processing intelligent query:', query);
       
-      // Extract time filter
-      const timeFilter = extractTimeFilter(query);
+      // Get context from memory
+      const context = getRelevantContext(query);
+      console.log('Relevant context:', context);
       
-      // Check for funnel-specific queries
-      const isFunnelQuery = lowerQuery.includes('funnel') || lowerQuery.includes('deliveries') || 
-                           lowerQuery.includes('opens') || lowerQuery.includes('clicks') ||
-                           lowerQuery.includes('open rate') || lowerQuery.includes('click through');
+      // Parse the query intent
+      const intent = IntelligentQueryProcessor.parseQuery(query);
+      console.log('Parsed intent:', intent);
       
-      // Check for comparison queries
-      const isComparison = lowerQuery.includes('compare') || lowerQuery.includes('vs') || 
-                          lowerQuery.includes('versus') || lowerQuery.includes(' with ');
+      // Execute the query
+      const result = await IntelligentQueryProcessor.executeQuery(intent, query);
+      console.log('Query result:', result);
       
-      if (isComparison) {
-        console.log('Detected comparison query');
-        const matchingPrograms = await findBestMatches(query, 'program');
-        
-        if (matchingPrograms.length >= 2) {
-          const comparison = await compareFunnelPerformance(matchingPrograms[0], matchingPrograms[1], 'program', timeFilter);
-          if (comparison) {
-            return formatFunnelComparison(comparison);
-          }
-        } else if (matchingPrograms.length === 1) {
-          // Try to find lessons if only one program found
-          const matchingLessons = await findBestMatches(query, 'lesson');
-          if (matchingLessons.length >= 1) {
-            const comparison = await compareFunnelPerformance(matchingPrograms[0], matchingLessons[0], 'program', timeFilter);
-            if (comparison) {
-              return formatFunnelComparison(comparison);
-            }
-          }
-          
-          return `🔍 **Found Program:** ${matchingPrograms[0]}\n\nTo compare programs, I need at least two programs. Here are some available programs you can compare with:\n\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ${matchingPrograms[0]} funnel with LPW Path funnel"`;
-        } else {
-          return `🔍 **No matching programs found** for comparison.\n\nAvailable programs:\n• ASG Primary Path\n• LPW Path\n\nTry asking: "Compare ASG Primary Path funnel with LPW Path funnel"`;
-        }
-      }
-      
-      // Try to find matching programs first
-      const matchingPrograms = await findBestMatches(query, 'program');
-      if (matchingPrograms.length > 0) {
-        console.log('Found matching programs:', matchingPrograms);
-        const performance = await analyzeFunnelPerformance(matchingPrograms[0], 'program', timeFilter);
-        if (performance) {
-          return formatFunnelResponse(performance);
-        }
-      }
-      
-      // Try to find matching lessons
-      const matchingLessons = await findBestMatches(query, 'lesson');
-      if (matchingLessons.length > 0) {
-        console.log('Found matching lessons:', matchingLessons);
-        const performance = await analyzeFunnelPerformance(matchingLessons[0], 'lesson', timeFilter);
-        if (performance) {
-          return formatFunnelResponse(performance);
-        }
-      }
-      
-      // Handle general queries
-      if (lowerQuery.includes('total') || lowerQuery.includes('count') || lowerQuery.includes('how many')) {
-        const { data, error } = await supabase
-          .from('Onboarding_Dunmmy_Data')
-          .select('category_1, customers_1');
-        
-        if (error) {
-          return `I encountered an error while fetching the data: ${error.message}`;
-        }
-        
-        if (data) {
-          const totalFunnel = getFunnelDataFromRecords(data);
-          const mockPerformance = {
-            name: 'Total Campaign Performance',
-            type: 'program' as const,
-            totalFunnel,
-            regionBreakdown: {},
-            timeFilter
-          };
-          return formatFunnelResponse(mockPerformance);
-        }
-      }
-      
-      // List available items
-      if (lowerQuery.includes('lesson') && (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('available'))) {
-        const lessons = await findBestMatches('', 'lesson');
-        const count = lessons.length;
-        const sampleLessons = lessons.slice(0, 8);
-        
-        let response = `📚 **Available Lessons** (${count} total)\n\n`;
-        response += sampleLessons.map(lesson => `• ${lesson}`).join('\n');
-        
-        if (count > 8) {
-          response += `\n\n...and ${count - 8} more lessons.`;
-        }
-        
-        return response;
-      }
-      
-      if (lowerQuery.includes('program') && (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('available'))) {
-        const programs = await findBestMatches('', 'program');
-        
-        let response = `🎯 **Available Programs** (${programs.length} total)\n\n`;
-        response += programs.map(program => `• ${program}`).join('\n');
-        
-        return response;
-      }
-      
-      // Provide helpful suggestions when no matches found
-      return `🤖 **I'd be happy to help with your marketing funnel analysis!** Here are some things you can try:\n\n**Program Funnel Analysis:**\n• "How is ASG Primary Path funnel performing?"\n• "Compare ASG Primary Path with LPW Path funnel performance"\n• "Show me LPW Path funnel metrics in Q3"\n• "Give me total deliveries, opens, and clicks for ASG Primary Path"\n\n**Lesson Funnel Analysis:**\n• "How is Product Feed Optimisation funnel performing?"\n• "Show me Shopping Campaigns lesson funnel metrics"\n\n**General Queries:**\n• "List all programs"\n• "Show available lessons"\n• "Give me total deliveries, opens, and clicks"\n\n*I'll show you Open Rate, Click Through Rate, and Click Through Open Rate for data-driven insights!*`;
-      
-    } catch (err) {
-      console.error('Unexpected error in processUserQuery:', err);
-      return `I encountered an unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`;
-    }
-  };
-
-  const processEnhancedQuery = async (query: string): Promise<string | { text: string; visualData?: any }> => {
-    try {
-      console.log('Processing enhanced query:', query);
-      
-      // Get conversation context
-      const recentContext = getRecentContext(3);
-      
-      // Analyze the query
-      const queryContext = await QueryAnalyzer.analyzeQuery(query, recentContext);
-      console.log('Query context:', queryContext);
-      
-      // Check if this is a follow-up question
-      const isFollowUp = isFollowUpQuestion(query);
-      if (isFollowUp) {
-        const relevantContext = findRelevantContext(query);
-        console.log('Found relevant context:', relevantContext);
-      }
-      
-      // Check for specific funnel queries (maintain existing functionality)
-      if (queryContext.type === 'funnel' || queryContext.entities.length > 0) {
-        return await processFunnelQuery(query, queryContext);
-      }
-      
-      // Process with new enhanced capabilities
-      const processedData = await DataProcessor.processQuery(queryContext, query);
-      
-      // Generate response
-      let response = generateEnhancedResponse(processedData, queryContext);
-      
-      // Add conversation turn
-      const turn: ConversationTurn = {
-        userQuery: query,
-        botResponse: typeof response === 'string' ? response : response.text,
-        queryContext,
-        timestamp: new Date()
+      // Update memory with the question and any discovered entities
+      const discoveredEntities = {
+        programs: intent.filters.program ? [intent.filters.program] : [],
+        lessons: intent.entity === 'lessons' && result.data ? result.data.map(d => d.lesson_name).filter(Boolean) : [],
+        regions: intent.entity === 'regions' && result.data ? result.data.map(d => d.region_name).filter(Boolean) : []
       };
-      addTurn(turn);
+      
+      addQuestion(query, discoveredEntities);
+      
+      // Update context based on the query
+      if (intent.entity === 'programs') {
+        updateContext('programs', intent.filters);
+      } else if (intent.entity === 'lessons') {
+        updateContext('lessons', intent.filters);
+      } else if (intent.entity === 'regions') {
+        updateContext('regions', intent.filters);
+      } else if (intent.entity === 'performance') {
+        updateContext('performance', intent.filters);
+      }
+      
+      // Generate smart follow-ups
+      const smartFollowUps = generateSmartFollowUps(query, result);
+      const combinedFollowUps = [...new Set([...result.followUps, ...smartFollowUps])].slice(0, 3);
+      
+      // Prepare response
+      let response = result.answer;
+      
+      if (combinedFollowUps.length > 0) {
+        response += `\n\n**You might also want to ask:**\n`;
+        response += combinedFollowUps.map(followUp => `• "${followUp}"`).join('\n');
+      }
+      
+      // Return with visualization if available
+      if (result.visualData) {
+        return {
+          text: response,
+          visualData: result.visualData
+        };
+      }
+      
+      // Return with data table if we have structured data
+      if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+        return {
+          text: response,
+          visualData: {
+            type: 'table' as const,
+            data: result.data
+          }
+        };
+      }
       
       return response;
       
     } catch (error) {
-      console.error('Error processing enhanced query:', error);
-      return `I encountered an error analyzing your question. Could you try rephrasing it? For example:\n\n• "Show me program performance"\n• "Break down by region"\n• "Compare Q3 to Q2"\n• "Which campaigns work best?"`;
+      console.error('Error processing intelligent query:', error);
+      return `I encountered an error processing your question: "${query}". Could you try rephrasing it?\n\n**Try asking:**\n• "What programs are available?"\n• "How many lessons in ASG Primary Path?"\n• "Show me regional data"`;
     }
-  };
-
-  const isFollowUpQuestion = (query: string): boolean => {
-    const followUpIndicators = ['that', 'this', 'it', 'those', 'these', 'also', 'too', 'as well', 'more about'];
-    const lowerQuery = query.toLowerCase();
-    return followUpIndicators.some(indicator => lowerQuery.includes(indicator));
-  };
-
-  const processFunnelQuery = async (query: string, queryContext: any) => {
-    // Use existing funnel processing logic
-    return await processUserQuery(query);
-  };
-
-  const generateEnhancedResponse = (processedData: any, queryContext: any): string | { text: string; visualData?: any } => {
-    let response = '';
-    
-    // Generate contextual response based on query type
-    switch (queryContext.type) {
-      case 'segmentation':
-        response = `📊 **Segmentation Analysis**\n\n`;
-        response += `Here's how your data breaks down by ${queryContext.dimensions.join(', ')}:\n\n`;
-        break;
-      case 'geographic':
-        response = `🌍 **Geographic Analysis**\n\n`;
-        response += `Regional performance breakdown:\n\n`;
-        break;
-      case 'trend':
-        response = `📈 **Trend Analysis**\n\n`;
-        response += `Here's how performance has changed over time:\n\n`;
-        break;
-      case 'campaign':
-        response = `📧 **Campaign Analysis**\n\n`;
-        response += `Campaign performance insights:\n\n`;
-        break;
-      default:
-        response = `🔍 **Data Analysis Results**\n\n`;
-    }
-    
-    // Add insights
-    if (processedData.insights.length > 0) {
-      response += `**Key Insights:**\n`;
-      processedData.insights.forEach((insight: string) => {
-        response += `• ${insight}\n`;
-      });
-      response += '\n';
-    }
-    
-    // Add follow-up suggestions
-    if (processedData.followUpSuggestions.length > 0) {
-      response += `**Want to explore more?**\n`;
-      processedData.followUpSuggestions.forEach((suggestion: string) => {
-        response += `• ${suggestion}\n`;
-      });
-    }
-    
-    // Return with visualization data if applicable
-    if (processedData.type === 'chart') {
-      return {
-        text: response,
-        visualData: {
-          type: 'table',
-          data: processedData.data
-        }
-      };
-    }
-    
-    return response;
   };
 
   const handleSendMessage = async () => {
@@ -593,12 +122,12 @@ export default function ChatBot() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
     try {
-      // Use enhanced query processing
-      const botResponse = await processEnhancedQuery(input);
+      const botResponse = await processIntelligentQuery(currentInput);
       
       let botMessage: Message;
       
@@ -614,7 +143,7 @@ export default function ChatBot() {
         botMessage = {
           id: (Date.now() + 1).toString(),
           type: 'bot',
-          content: typeof botResponse === 'string' ? botResponse : botResponse.text || 'No response available',
+          content: typeof botResponse === 'string' ? botResponse : botResponse.text || 'I couldn\'t process your question.',
           timestamp: new Date()
         };
       }
@@ -626,6 +155,7 @@ export default function ChatBot() {
         description: "Failed to process your message. Please try again.",
         variant: "destructive"
       });
+      console.error('Error in handleSendMessage:', error);
     } finally {
       setIsLoading(false);
     }
@@ -643,7 +173,7 @@ export default function ChatBot() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bot className="w-6 h-6" />
-          Marketing Funnel Analytics
+          Intelligent Data Assistant
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
@@ -677,30 +207,16 @@ export default function ChatBot() {
                   {message.visualData && (
                     <div className="w-full overflow-hidden">
                       {message.visualData.type === 'funnel' && (
-                        <div className="space-y-4">
-                          <FunnelVisualization 
-                            data={message.visualData.data.performance.totalFunnel}
-                            title={message.visualData.data.performance.name}
-                          />
-                          {message.visualData.data.showRegional && (
-                            <RegionalFunnelChart 
-                              regionBreakdown={message.visualData.data.performance.regionBreakdown}
-                            />
-                          )}
-                        </div>
-                      )}
-                      
-                      {message.visualData.type === 'comparison' && (
-                        <FunnelComparison 
-                          performance1={message.visualData.data.performance1}
-                          performance2={message.visualData.data.performance2}
+                        <FunnelVisualization 
+                          data={message.visualData.data}
+                          title="Performance Metrics"
                         />
                       )}
 
                       {message.visualData.type === 'table' && (
                         <DataTable 
-                          data={message.visualData.data}
-                          title="Data Table"
+                          data={Array.isArray(message.visualData.data) ? message.visualData.data : [message.visualData.data]}
+                          title="Query Results"
                         />
                       )}
                     </div>
@@ -719,7 +235,7 @@ export default function ChatBot() {
                     <Bot className="w-4 h-4" />
                   </div>
                   <div className="bg-muted rounded-lg p-3">
-                    <p className="text-sm text-muted-foreground">Analyzing funnel data...</p>
+                    <p className="text-sm text-muted-foreground">Processing your question...</p>
                   </div>
                 </div>
               </div>
@@ -732,7 +248,7 @@ export default function ChatBot() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Ask about funnel performance, deliveries, opens, clicks..."
+            placeholder="Ask me anything about your data... (e.g., 'What lessons are in ASG Primary Path?')"
             disabled={isLoading}
             className="flex-1"
           />
