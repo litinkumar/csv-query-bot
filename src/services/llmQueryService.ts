@@ -210,7 +210,7 @@ Respond with ONLY the JSON object, no other text.`;
     
     data.forEach(row => {
       const category = row.category_1?.toLowerCase() || '';
-      const customers = row.customers_1 || 0;
+      const customers = row.total_customers || row.customers_1 || 0;
       
       if (category.includes('deliver')) {
         funnelData.deliveries += customers;
@@ -221,7 +221,17 @@ Respond with ONLY the JSON object, no other text.`;
       }
     });
 
-    return funnelData;
+    // Calculate rates
+    const openRate = funnelData.deliveries > 0 ? (funnelData.opens / funnelData.deliveries) * 100 : 0;
+    const clickThroughRate = funnelData.deliveries > 0 ? (funnelData.clicks / funnelData.deliveries) * 100 : 0;
+    const clickThroughOpenRate = funnelData.opens > 0 ? (funnelData.clicks / funnelData.opens) * 100 : 0;
+
+    return {
+      ...funnelData,
+      openRate,
+      clickThroughRate,
+      clickThroughOpenRate
+    };
   }
 
   static async generateDataExploration(context: string[]): Promise<string[]> {
