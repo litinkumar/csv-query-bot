@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { FunnelVisualization } from "./FunnelVisualization";
+import { DimensionalFunnelVisualization } from "./DimensionalFunnelVisualization";
 import { DimensionalFollowUps } from "./DimensionalFollowUps";
 import { LLMQueryService } from "../services/llmQueryService";
 import { DimensionService, Dimension } from "../services/dimensionService";
@@ -17,7 +18,7 @@ interface Message {
   content: string;
   timestamp: Date;
   visualData?: {
-    type: 'funnel' | 'table' | 'chart';
+    type: 'funnel' | 'table' | 'chart' | 'dimensional-funnel';
     data: any;
   };
   dimensions?: Dimension[];
@@ -118,11 +119,50 @@ export default function ChatBot() {
     }
   };
 
-  const handleDimensionSelect = (dimension: string, value?: string, originalQuery?: string) => {
+  const handleDimensionSelect = async (dimension: string, value?: string, originalQuery?: string) => {
     if (!originalQuery) return;
     
     const followUpQuery = DimensionService.generateFollowUpQuery(originalQuery, dimension, value);
-    setInput(followUpQuery);
+    console.log('🔄 Executing dimensional follow-up query:', followUpQuery);
+    
+    // Immediately execute the dimensional query
+    setIsLoading(true);
+    
+    try {
+      const botResponse = await processIntelligentQuery(followUpQuery);
+      
+      let botMessage: Message;
+      
+      if (typeof botResponse === 'object' && botResponse.text) {
+        botMessage = {
+          id: Date.now().toString(),
+          type: 'bot',
+          content: botResponse.text,
+          timestamp: new Date(),
+          visualData: botResponse.visualData,
+          dimensions: botResponse.dimensions,
+          originalQuery: followUpQuery
+        };
+      } else {
+        botMessage = {
+          id: Date.now().toString(),
+          type: 'bot',
+          content: typeof botResponse === 'string' ? botResponse : 'Unable to process dimensional breakdown.',
+          timestamp: new Date()
+        };
+      }
+
+      setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process dimensional breakdown.",
+        variant: "destructive"
+      });
+      console.error('Error in handleDimensionSelect:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -162,12 +202,22 @@ export default function ChatBot() {
                         {message.content}
                       </div>
                       
-                      {/* Visual Data - Funnel Visualization */}
+                      {/* Visual Data - Regular Funnel Visualization */}
                       {message.visualData && message.visualData.type === 'funnel' && (
                         <div className="w-full max-w-md">
                           <FunnelVisualization 
                             data={message.visualData.data}
                             title=""
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Visual Data - Dimensional Funnel Visualization */}
+                      {message.visualData && message.visualData.type === 'dimensional-funnel' && (
+                        <div className="w-full">
+                          <DimensionalFunnelVisualization 
+                            data={message.visualData.data}
+                            title="Breakdown Analysis"
                           />
                         </div>
                       )}

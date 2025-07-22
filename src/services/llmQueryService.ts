@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface QueryPlan {
@@ -48,15 +49,8 @@ export class LLMQueryService {
 
   private static getEnhancedRegionMapping(): Record<string, string> {
     return {
-      'US': 'Americas',
-      'USA': 'Americas', 
-      'America': 'Americas',
-      'North America': 'Americas',
       'Americas': 'Americas',
-      'Europe': 'EMEA',
       'EMEA': 'EMEA',
-      'Asia': 'APAC',
-      'Asia Pacific': 'APAC',
       'APAC': 'APAC',
       'Latin America': 'Latin America',
       'Africa': 'Africa'
@@ -136,36 +130,70 @@ export class LLMQueryService {
     const programMapping = this.getEnhancedProgramMapping();
     const regionMapping = this.getEnhancedRegionMapping();
 
+    // Check if this is a dimensional breakdown query
+    const isDimensionalBreakdown = query.toLowerCase().includes('broken down by') || 
+                                  query.toLowerCase().includes('breakdown by') ||
+                                  query.toLowerCase().includes('by region') ||
+                                  query.toLowerCase().includes('by quarter') ||
+                                  query.toLowerCase().includes('by program') ||
+                                  query.toLowerCase().includes('by spend tier');
+
     const schemaInfo = `
 Available data schema:
 - Table: "sample_engagement_data" (IMPORTANT: Always use double quotes around this table name in SQL queries)
 - Columns: customers_1, campaign_id_1, lesson_number_1, funnel_order_1, spend_tier_grouped_1, assignment_status_1, category_1, lesson_name_1, program_name_1, primary_product_1, send_date_quarter_1, send_date_week_1, send_date_1, acq_region_1, country_code_1, language_1
 
-ENHANCED PROGRAM MAPPING (use this for better matching):
-${Object.entries(programMapping).map(([key, values]) => `- "${key}" maps to: ${values.join(', ')}`).join('\n')}
+ACTUAL REGION VALUES IN DATABASE: ${dataValidation.availableRegions.join(', ')}
+ACTUAL PROGRAM VALUES IN DATABASE: ${dataValidation.availablePrograms.join(', ')}
+ACTUAL TIME PERIODS IN DATABASE: ${dataValidation.availableTimeRanges.join(', ')}
 
-ENHANCED REGION MAPPING (use this for better matching):  
-${Object.entries(regionMapping).map(([key, value]) => `- "${key}" maps to: ${value}`).join('\n')}
-
-AVAILABLE DATA SUMMARY:
-- Programs: ${dataValidation.availablePrograms.join(', ')}
-- Regions: ${dataValidation.availableRegions.join(', ')}
-- Time Periods: ${dataValidation.availableTimeRanges.join(', ')}
-
-FUNNEL STAGE MAPPING:
-- Deliveries: category_1 LIKE '%deliver%'
-- Opens: category_1 LIKE '%open%'  
-- Clicks: category_1 LIKE '%click%'
-- Adoptions: category_1 LIKE '%adopt%' OR category_1 LIKE '%convert%' OR category_1 LIKE '%complete%'
+CATEGORY VALUES FOR FUNNEL STAGES:
+- Use category_1 column directly without complex filtering
+- Categories include: delivered, opened, clicked, adopted, etc.
 `;
 
-    const prompt = `You are a data analyst AI. Create a query that returns funnel metrics (Deliveries, Opens, Clicks, Adoptions) for visualization.
+    let prompt = '';
+    
+    if (isDimensionalBreakdown) {
+      prompt = `You are a data analyst AI. Create a query for dimensional breakdown analysis.
 
 Query: "${query}"
 
 ${schemaInfo}
 
-CRITICAL: Always structure queries to return funnel metrics by category_1. Use this template:
+For dimensional breakdowns, create a query that returns data grouped by BOTH category_1 AND the dimension:
+- If "by region": GROUP BY category_1, acq_region_1
+- If "by quarter": GROUP BY category_1, send_date_quarter_1  
+- If "by program": GROUP BY category_1, program_name_1
+- If "by spend tier": GROUP BY category_1, spend_tier_grouped_1
+
+Template for dimensional breakdown:
+SELECT 
+  category_1,
+  [dimension_column] as dimension_value,
+  SUM(customers_1) as customers
+FROM "sample_engagement_data" 
+WHERE [your filters here]
+GROUP BY category_1, [dimension_column]
+ORDER BY dimension_value, category_1
+
+Respond with ONLY a valid JSON object:
+{
+  "intent": "brief description",
+  "entities": ["key", "entities"],
+  "filters": {"key": "value"},
+  "sqlQuery": "SELECT statement with dimensional grouping",
+  "expectedVisualization": "funnel",
+  "explanation": "brief explanation"
+}`;
+    } else {
+      prompt = `You are a data analyst AI. Create a query that returns funnel metrics (Deliveries, Opens, Clicks, Adoptions) for visualization.
+
+Query: "${query}"
+
+${schemaInfo}
+
+Create a simple query that groups by category_1 only:
 SELECT 
   category_1,
   SUM(customers_1) as customers
@@ -173,6 +201,8 @@ FROM "sample_engagement_data"
 WHERE [your filters here]
 GROUP BY category_1
 ORDER BY category_1
+
+Only use exact values from the database. Do not use variations like 'US', 'USA' - use 'Americas' exactly.
 
 Respond with ONLY a valid JSON object:
 {
@@ -183,6 +213,7 @@ Respond with ONLY a valid JSON object:
   "expectedVisualization": "funnel",
   "explanation": "brief explanation"
 }`;
+    }
 
     try {
       console.log('🤖 Sending enhanced prompt to LLM');
@@ -226,25 +257,49 @@ Respond with ONLY a valid JSON object:
       const actualData = queryResponse?.data || [];
       console.log('✅ Query results:', actualData);
 
-      // Process data into funnel format
-      const funnelData = this.prepareFunnelData(actualData);
-      console.log('📊 Funnel data:', funnelData);
+      // Check if this is dimensional data (has multiple dimensions)
+      const hasDimensionalData = actualData.some(row => row.dimension_value !== undefined);
+      
+      if (hasDimensionalData) {
+        // Process dimensional data
+        const dimensionalData = this.processDimensionalData(actualData);
+        console.log('📊 Dimensional data:', dimensionalData);
 
-      return {
-        answer: plan.intent,
-        data: actualData,
-        visualData: {
-          type: 'funnel',
-          data: funnelData
-        },
-        followUps: [
-          "View by Region",
-          "View by Quarter", 
-          "View by Program",
-          "View by Spend Tier"
-        ],
-        insights: []
-      };
+        return {
+          answer: plan.intent,
+          data: actualData,
+          visualData: {
+            type: 'dimensional-funnel',
+            data: dimensionalData
+          },
+          followUps: [
+            "View overall summary",
+            "Compare top performers", 
+            "View detailed breakdown"
+          ],
+          insights: []
+        };
+      } else {
+        // Process single funnel data
+        const funnelData = this.prepareFunnelData(actualData);
+        console.log('📊 Funnel data:', funnelData);
+
+        return {
+          answer: plan.intent,
+          data: actualData,
+          visualData: {
+            type: 'funnel',
+            data: funnelData
+          },
+          followUps: [
+            "View by Region",
+            "View by Quarter", 
+            "View by Program",
+            "View by Spend Tier"
+          ],
+          insights: []
+        };
+      }
 
     } catch (error) {
       console.error('❌ Failed to execute query plan:', error);
@@ -296,9 +351,14 @@ Respond with ONLY a valid JSON object:
       adoptions: 0 
     };
     
+    console.log('🔄 Processing funnel data:', data);
+    
     data.forEach(row => {
       const category = row.category_1?.toLowerCase() || '';
+      // Handle different possible field names for customer count
       const customers = row.customers || row.total_customers || row.customers_1 || 0;
+      
+      console.log(`Processing row: category=${category}, customers=${customers}`);
       
       if (category.includes('deliver')) {
         funnelData.deliveries += customers;
@@ -310,6 +370,8 @@ Respond with ONLY a valid JSON object:
         funnelData.adoptions += customers;
       }
     });
+
+    console.log('📊 Final funnel data:', funnelData);
 
     // Calculate rates
     const openRate = funnelData.deliveries > 0 ? (funnelData.opens / funnelData.deliveries) * 100 : 0;
@@ -324,6 +386,27 @@ Respond with ONLY a valid JSON object:
       clickThroughOpenRate,
       adoptionRate
     };
+  }
+
+  private static processDimensionalData(data: any[]): any {
+    // Group data by dimension value
+    const dimensionGroups: Record<string, any[]> = {};
+    
+    data.forEach(row => {
+      const dimensionValue = row.dimension_value || 'Unknown';
+      if (!dimensionGroups[dimensionValue]) {
+        dimensionGroups[dimensionValue] = [];
+      }
+      dimensionGroups[dimensionValue].push(row);
+    });
+
+    // Process each dimension group into funnel data
+    const processedData: Record<string, any> = {};
+    Object.entries(dimensionGroups).forEach(([dimensionValue, rows]) => {
+      processedData[dimensionValue] = this.prepareFunnelData(rows);
+    });
+
+    return processedData;
   }
 
   static async generateDataExploration(context: string[]): Promise<string[]> {
