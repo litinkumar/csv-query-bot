@@ -76,7 +76,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      execute_safe_query: {
+        Args: { query_text: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
