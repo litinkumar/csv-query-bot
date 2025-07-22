@@ -6,9 +6,11 @@ interface FunnelData {
   deliveries: number;
   opens: number;
   clicks: number;
+  adoptions: number;
   openRate: number;
   clickThroughRate: number;
   clickThroughOpenRate: number;
+  adoptionRate: number;
 }
 
 interface FunnelPerformance {
@@ -117,6 +119,19 @@ export function FunnelComparison({ performance1, performance2, className = "" }:
               </div>
               <div className="text-center">
                 {getMetricComparison(p1.clickThroughOpenRate, p2.clickThroughOpenRate)}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs items-center min-w-[300px]">
+              <div className="font-medium">Adoption Rate</div>
+              <div className="text-center">
+                <Badge variant="secondary" className="text-xs">{p1.adoptionRate.toFixed(1)}%</Badge>
+              </div>
+              <div className="text-center">
+                <Badge variant="secondary" className="text-xs">{p2.adoptionRate.toFixed(1)}%</Badge>
+              </div>
+              <div className="text-center">
+                {getMetricComparison(p1.adoptionRate, p2.adoptionRate)}
               </div>
             </div>
           </div>
