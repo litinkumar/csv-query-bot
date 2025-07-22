@@ -5,7 +5,7 @@ export interface ConversationTurn {
   userQuery: string;
   botResponse: string;
   queryContext: {
-    type: 'funnel' | 'comparison' | 'trend' | 'segmentation' | 'general';
+    type: 'funnel' | 'comparison' | 'trend' | 'segmentation' | 'geographic' | 'campaign' | 'general';
     entities: string[];
     dimensions: string[];
     timeFilter?: string;

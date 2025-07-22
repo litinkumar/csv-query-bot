@@ -481,7 +481,7 @@ export default function ChatBot() {
       console.log('Query context:', queryContext);
       
       // Check if this is a follow-up question
-      const isFollowUp = this.isFollowUpQuestion(query);
+      const isFollowUp = isFollowUpQuestion(query);
       if (isFollowUp) {
         const relevantContext = findRelevantContext(query);
         console.log('Found relevant context:', relevantContext);
@@ -489,14 +489,14 @@ export default function ChatBot() {
       
       // Check for specific funnel queries (maintain existing functionality)
       if (queryContext.type === 'funnel' || queryContext.entities.length > 0) {
-        return await this.processFunnelQuery(query, queryContext);
+        return await processFunnelQuery(query, queryContext);
       }
       
       // Process with new enhanced capabilities
       const processedData = await DataProcessor.processQuery(queryContext, query);
       
       // Generate response
-      let response = this.generateEnhancedResponse(processedData, queryContext);
+      let response = generateEnhancedResponse(processedData, queryContext);
       
       // Add conversation turn
       const turn: ConversationTurn = {
@@ -515,18 +515,18 @@ export default function ChatBot() {
     }
   };
 
-  private isFollowUpQuestion = (query: string): boolean => {
+  const isFollowUpQuestion = (query: string): boolean => {
     const followUpIndicators = ['that', 'this', 'it', 'those', 'these', 'also', 'too', 'as well', 'more about'];
     const lowerQuery = query.toLowerCase();
     return followUpIndicators.some(indicator => lowerQuery.includes(indicator));
   };
 
-  private processFunnelQuery = async (query: string, queryContext: any) => {
+  const processFunnelQuery = async (query: string, queryContext: any) => {
     // Use existing funnel processing logic
-    return await this.processUserQuery(query);
+    return await processUserQuery(query);
   };
 
-  private generateEnhancedResponse = (processedData: any, queryContext: any): string | { text: string; visualData?: any } => {
+  const generateEnhancedResponse = (processedData: any, queryContext: any): string | { text: string; visualData?: any } => {
     let response = '';
     
     // Generate contextual response based on query type
