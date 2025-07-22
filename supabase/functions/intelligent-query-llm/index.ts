@@ -20,7 +20,8 @@ serve(async (req) => {
       throw new Error('Gemini API key not configured');
     }
 
-    console.log('Processing LLM request with Gemini, prompt length:', prompt.length);
+    console.log('🤖 Processing LLM request with Gemini, prompt length:', prompt.length);
+    console.log('📝 First 500 chars of prompt:', prompt.substring(0, 500));
 
     // Use Gemini 1.5 Flash for fast and cost-effective processing
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
@@ -45,18 +46,20 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', response.status, errorText);
+      console.error('❌ Gemini API error:', response.status, errorText);
       throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     
     if (!data.candidates || data.candidates.length === 0) {
+      console.error('❌ No response generated from Gemini:', data);
       throw new Error('No response generated from Gemini');
     }
 
     const geminiResponse = data.candidates[0].content.parts[0].text;
-    console.log('Gemini response received, length:', geminiResponse.length);
+    console.log('✅ Gemini response received, length:', geminiResponse.length);
+    console.log('📋 First 300 chars of response:', geminiResponse.substring(0, 300));
 
     return new Response(
       JSON.stringify({ response: geminiResponse }),
@@ -64,7 +67,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in intelligent-query-llm:', error);
+    console.error('❌ Error in intelligent-query-llm:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

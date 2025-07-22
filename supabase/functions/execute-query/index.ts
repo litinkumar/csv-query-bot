@@ -20,7 +20,8 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Executing query:', query);
+    console.log('🚀 Executing query:', query);
+    console.log('📊 Query type:', query.toLowerCase().includes('month') ? 'Month-over-month analysis' : 'Standard query');
 
     // For security, we'll parse and validate the query
     const sanitizedQuery = query.trim();
@@ -30,17 +31,45 @@ serve(async (req) => {
       throw new Error('Only SELECT queries are allowed');
     }
 
+    // Additional validation for enhanced security
+    const forbiddenKeywords = ['drop', 'delete', 'insert', 'update', 'alter', 'create', 'truncate'];
+    const queryLower = sanitizedQuery.toLowerCase();
+    for (const keyword of forbiddenKeywords) {
+      if (queryLower.includes(keyword)) {
+        throw new Error(`Forbidden keyword detected: ${keyword}`);
+      }
+    }
+
+    // Enhanced logging for ASG and Americas queries
+    if (queryLower.includes('asg') || queryLower.includes('americas')) {
+      console.log('🎯 Detected ASG/Americas query - enhanced tracking enabled');
+      console.log('📋 Full query:', sanitizedQuery);
+    }
+
     // Execute query using the Supabase client
     const { data, error } = await supabase.rpc('execute_safe_query', {
       query_text: sanitizedQuery
     });
 
     if (error) {
-      console.error('Query execution error:', error);
+      console.error('❌ Query execution error:', error);
+      console.log('🔍 Failed query was:', sanitizedQuery);
       throw error;
     }
 
-    console.log('Query executed successfully, rows:', data?.length || 0);
+    console.log('✅ Query executed successfully, rows returned:', data?.length || 0);
+    
+    // Enhanced logging for debugging data issues
+    if ((!data || data.length === 0) && (queryLower.includes('asg') || queryLower.includes('americas'))) {
+      console.log('⚠️  No data returned for ASG/Americas query - investigating...');
+      
+      // Quick validation query to check data availability
+      const validationQuery = `SELECT DISTINCT program_name_1, acq_region_1 FROM "sample_engagement_data" WHERE program_name_1 ILIKE '%ASG%' OR acq_region_1 = 'Americas' LIMIT 10`;
+      const { data: validationData } = await supabase.rpc('execute_safe_query', {
+        query_text: validationQuery
+      });
+      console.log('🔍 Validation data sample:', validationData);
+    }
 
     return new Response(
       JSON.stringify({ data }),
@@ -48,7 +77,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in execute-query:', error);
+    console.error('❌ Error in execute-query:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

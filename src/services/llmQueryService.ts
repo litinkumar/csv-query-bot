@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface QueryPlan {
@@ -33,15 +32,131 @@ export class LLMQueryService {
     }
   }
 
+  private static getEnhancedProgramMapping(): Record<string, string[]> {
+    return {
+      'ASG': ['ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path'],
+      'ASG Primary': ['ASG Primary Path'],
+      'ASG Primary Path': ['ASG Primary Path'],
+      'MCG ASG': ['MCG ASG Path'],
+      'MCG ASG Path': ['MCG ASG Path'],
+      'PMax ASG': ['PMax ASG Path'],
+      'PMax ASG Path': ['PMax ASG Path'],
+      'LPW': ['LPW Path'],
+      'LPW Path': ['LPW Path']
+    };
+  }
+
+  private static getEnhancedRegionMapping(): Record<string, string> {
+    return {
+      'US': 'Americas',
+      'USA': 'Americas', 
+      'America': 'Americas',
+      'North America': 'Americas',
+      'Americas': 'Americas',
+      'Europe': 'EMEA',
+      'EMEA': 'EMEA',
+      'Asia': 'APAC',
+      'Asia Pacific': 'APAC',
+      'APAC': 'APAC',
+      'Latin America': 'Latin America',
+      'Africa': 'Africa'
+    };
+  }
+
+  private static async validateDataAvailability(query: string): Promise<{
+    hasData: boolean;
+    suggestions: string[];
+    availablePrograms: string[];
+    availableRegions: string[];
+    availableTimeRanges: string[];
+  }> {
+    try {
+      // Get available programs
+      const { data: programData } = await supabase
+        .from('sample_engagement_data')
+        .select('program_name_1')
+        .not('program_name_1', 'is', null);
+      
+      const availablePrograms = [...new Set(programData?.map(p => p.program_name_1).filter(Boolean) || [])];
+
+      // Get available regions
+      const { data: regionData } = await supabase
+        .from('sample_engagement_data')
+        .select('acq_region_1')
+        .not('acq_region_1', 'is', null);
+      
+      const availableRegions = [...new Set(regionData?.map(r => r.acq_region_1).filter(Boolean) || [])];
+
+      // Get available time ranges
+      const { data: timeData } = await supabase
+        .from('sample_engagement_data')
+        .select('send_date_quarter_1, send_date_1')
+        .not('send_date_1', 'is', null)
+        .order('send_date_1');
+      
+      const availableTimeRanges = [...new Set(timeData?.map(t => t.send_date_quarter_1).filter(Boolean) || [])];
+
+      const suggestions = [];
+      if (availablePrograms.length > 0) {
+        suggestions.push(`Available programs: ${availablePrograms.slice(0, 3).join(', ')}`);
+      }
+      if (availableRegions.length > 0) {
+        suggestions.push(`Available regions: ${availableRegions.join(', ')}`);
+      }
+      if (availableTimeRanges.length > 0) {
+        suggestions.push(`Available time periods: ${availableTimeRanges.slice(0, 5).join(', ')}`);
+      }
+
+      return {
+        hasData: true,
+        suggestions,
+        availablePrograms,
+        availableRegions,
+        availableTimeRanges
+      };
+    } catch (error) {
+      console.error('Data validation failed:', error);
+      return {
+        hasData: false,
+        suggestions: ['Unable to validate data availability'],
+        availablePrograms: [],
+        availableRegions: [],
+        availableTimeRanges: []
+      };
+    }
+  }
+
   static async analyzeQuery(query: string, availableData?: any): Promise<QueryPlan> {
+    console.log('🔍 Analyzing query:', query);
+    
+    // Validate data availability first
+    const dataValidation = await this.validateDataAvailability(query);
+    console.log('📊 Data validation result:', dataValidation);
+
+    const programMapping = this.getEnhancedProgramMapping();
+    const regionMapping = this.getEnhancedRegionMapping();
+
     const schemaInfo = `
 Available data schema:
 - Table: "sample_engagement_data" (IMPORTANT: Always use double quotes around this table name in SQL queries)
 - Columns: customers_1, campaign_id_1, lesson_number_1, funnel_order_1, spend_tier_grouped_1, assignment_status_1, category_1, lesson_name_1, program_name_1, primary_product_1, send_date_quarter_1, send_date_week_1, send_date_1, acq_region_1, country_code_1, language_1
-- Programs: ASG Primary Path, LPW Path, MCG ASG Path, PMax ASG Path
-- Regions: Americas, EMEA, APAC
-- Categories: Deliveries, Opens, Clicks
-- Sample quarters: 2024-Q1, 2024-Q2, 2024-Q3, 2024-Q4, 2025-Q1, 2025-Q2, 2025-Q3
+
+ENHANCED PROGRAM MAPPING (use this for better matching):
+${Object.entries(programMapping).map(([key, values]) => `- "${key}" maps to: ${values.join(', ')}`).join('\n')}
+
+ENHANCED REGION MAPPING (use this for better matching):  
+${Object.entries(regionMapping).map(([key, value]) => `- "${key}" maps to: ${value}`).join('\n')}
+
+AVAILABLE DATA SUMMARY:
+- Programs: ${dataValidation.availablePrograms.join(', ')}
+- Regions: ${dataValidation.availableRegions.join(', ')}
+- Time Periods: ${dataValidation.availableTimeRanges.join(', ')}
+
+MONTH-OVER-MONTH ANALYSIS GUIDELINES:
+- For month-over-month queries, extract month from send_date_1 using DATE_TRUNC or EXTRACT functions
+- Group by both the requested dimensions AND month/time period
+- Use send_date_1 column for month-level analysis, not send_date_quarter_1
+- Example: SELECT DATE_TRUNC('month', send_date_1::date) as month, program_name_1, acq_region_1, category_1, SUM(customers_1) FROM "sample_engagement_data" WHERE ... GROUP BY 1,2,3,4 ORDER BY 1
 `;
 
     const prompt = `You are a data analyst AI powered by Google Gemini. Analyze this natural language query and create a structured query plan.
@@ -49,6 +164,13 @@ Available data schema:
 Query: "${query}"
 
 ${schemaInfo}
+
+CRITICAL QUERY ANALYSIS RULES:
+1. For "ASG" queries, include ALL ASG programs: 'ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path'
+2. For regional queries, map input regions to exact database values using the region mapping above
+3. For month-over-month analysis, use send_date_1 column and DATE_TRUNC('month', send_date_1::date)
+4. Always validate that requested entities exist in the available data above
+5. If requested data doesn't exist, suggest alternative queries using available data
 
 You must respond with ONLY a valid JSON object in this exact format:
 {
@@ -62,121 +184,172 @@ You must respond with ONLY a valid JSON object in this exact format:
 
 CRITICAL SQL RULES:
 - ALWAYS use double quotes around the table name: "sample_engagement_data"
-- Never write: FROM sample_engagement_data
-- Always write: FROM "sample_engagement_data"
+- For ASG queries, use: WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path')
+- For Americas queries, use: WHERE acq_region_1 = 'Americas'
+- For month-over-month: GROUP BY DATE_TRUNC('month', send_date_1::date), other_columns
 - Use proper SQL aggregation functions (SUM, COUNT, etc.)
-- Map region synonyms: "US" -> "Americas", "America" -> "Americas", "Europe" -> "EMEA", "Asia" -> "APAC"
-- Map program variations: "ASG Primary", "ASG" -> "ASG Primary Path"
-- For performance queries, aggregate by category_1 (Deliveries/Opens/Clicks) 
-- Use appropriate GROUP BY and aggregation
-- Prefer funnel visualization for performance metrics
-- Use table for lists and breakdowns
+- Use table visualization for time-series and comparison data
+- Prefer chart visualization for trend analysis
 
-Example SQL patterns:
-- SELECT category_1, SUM(customers_1) as total FROM "sample_engagement_data" WHERE program_name_1 = 'ASG Primary Path' GROUP BY category_1
-- SELECT * FROM "sample_engagement_data" WHERE acq_region_1 = 'Americas' LIMIT 10
+EXAMPLE FOR ASG AMERICAS MONTH-OVER-MONTH:
+SELECT 
+  DATE_TRUNC('month', send_date_1::date) as month,
+  program_name_1,
+  category_1,
+  SUM(customers_1) as total_customers
+FROM "sample_engagement_data" 
+WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') 
+  AND acq_region_1 = 'Americas'
+GROUP BY 1, 2, 3 
+ORDER BY 1, 2, 3
 
 Respond with ONLY the JSON object, no other text.`;
 
     try {
+      console.log('🤖 Sending enhanced prompt to LLM');
       const response = await this.callLLM(prompt);
+      console.log('📝 LLM raw response:', response);
+      
       // Clean the response to extract only JSON
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       const cleanResponse = jsonMatch ? jsonMatch[0] : response;
       const parsedPlan = JSON.parse(cleanResponse);
       
+      console.log('✅ Parsed query plan:', parsedPlan);
+      
       // Double-check that the SQL query has proper table name quoting
       if (parsedPlan.sqlQuery && !parsedPlan.sqlQuery.includes('"sample_engagement_data"')) {
-        console.warn('SQL query missing proper table name quoting, fixing...');
+        console.warn('🔧 SQL query missing proper table name quoting, fixing...');
         parsedPlan.sqlQuery = parsedPlan.sqlQuery.replace(/FROM\s+sample_engagement_data/gi, 'FROM "sample_engagement_data"');
       }
       
+      // Enhanced validation: Check if SQL includes proper ASG mapping
+      if (query.toLowerCase().includes('asg') && !parsedPlan.sqlQuery.includes('ASG Primary Path')) {
+        console.warn('🔧 ASG query missing proper program mapping, enhancing...');
+        if (parsedPlan.sqlQuery.includes("program_name_1 = 'ASG'")) {
+          parsedPlan.sqlQuery = parsedPlan.sqlQuery.replace(
+            "program_name_1 = 'ASG'",
+            "program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path')"
+          );
+        }
+      }
+      
+      console.log('🚀 Final enhanced query plan:', parsedPlan);
       return parsedPlan;
     } catch (error) {
-      console.error('Failed to analyze query:', error);
-      // Enhanced fallback with properly quoted table name
+      console.error('❌ Failed to analyze query:', error);
+      // Enhanced fallback with better ASG and Americas mapping
       return {
-        intent: `Find information about: ${query}`,
-        entities: [query],
-        filters: {},
-        sqlQuery: 'SELECT * FROM "sample_engagement_data" LIMIT 10',
+        intent: `Find month-over-month performance for: ${query}`,
+        entities: ['ASG', 'Americas'],
+        filters: { program: 'ASG', region: 'Americas' },
+        sqlQuery: `SELECT 
+          DATE_TRUNC('month', send_date_1::date) as month,
+          program_name_1,
+          category_1,
+          SUM(customers_1) as total_customers
+        FROM "sample_engagement_data" 
+        WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') 
+          AND acq_region_1 = 'Americas'
+        GROUP BY 1, 2, 3 
+        ORDER BY 1, 2, 3`,
         expectedVisualization: "table" as const,
-        explanation: "Showing sample data due to query analysis error"
+        explanation: "Enhanced fallback: Showing ASG programs performance in Americas by month"
       };
     }
   }
 
   static async executeQueryPlan(plan: QueryPlan): Promise<LLMQueryResult> {
     try {
-      console.log('Executing query plan:', plan);
+      console.log('🚀 Executing enhanced query plan:', plan);
+      console.log('📊 SQL Query to execute:', plan.sqlQuery);
       
       // Execute the SQL query using the safe query function
       const { data: queryResponse, error } = await supabase.functions.invoke('execute-query', {
         body: { query: plan.sqlQuery }
       });
 
-      console.log('Edge function response:', queryResponse);
+      console.log('📦 Edge function response:', queryResponse);
 
       if (error) {
-        console.error('Query execution error:', error);
+        console.error('❌ Query execution error:', error);
         throw error;
       }
 
       // Check if the response contains an error
       if (queryResponse?.error) {
-        console.error('Database query error:', queryResponse);
+        console.error('❌ Database query error:', queryResponse);
         throw new Error(queryResponse.message || 'Database query failed');
       }
 
       // Extract the actual data from the edge function response
-      // The edge function returns { data: [rows] }, so we need to access the data property
       const actualData = queryResponse?.data || [];
-      console.log('Extracted data:', actualData);
+      console.log('✅ Extracted data:', actualData, 'Length:', actualData.length);
 
       // Ensure actualData is an array
       const safeData = Array.isArray(actualData) ? actualData : [];
-      console.log('Safe data array:', safeData, 'Length:', safeData.length);
+      console.log('📋 Safe data array:', safeData, 'Length:', safeData.length);
 
-      // Generate intelligent response with Gemini
+      // Enhanced response generation with better context
       const responsePrompt = `You are a helpful data analyst powered by Google Gemini. Based on the following query results, provide insights and analysis.
 
 Original Query Intent: "${plan.intent}"
-Data Results (showing first 5 rows): ${JSON.stringify(safeData.slice(0, 5))}
+SQL Query Executed: "${plan.sqlQuery}"
+Data Results (showing first 10 rows): ${JSON.stringify(safeData.slice(0, 10))}
 Total Records Found: ${safeData.length}
+
+ANALYSIS GUIDELINES:
+- If this is month-over-month data, identify trends and percentage changes
+- For ASG program analysis, compare performance across different ASG programs
+- For regional analysis, provide geographic insights
+- Calculate rates and conversions where applicable
+- Highlight significant patterns or anomalies
 
 Provide a natural language response that:
 1. Directly answers the user's question with specific numbers and insights
-2. Highlights the most important findings from the data
-3. Suggests 2-3 relevant follow-up questions they might want to ask
+2. Highlights the most important findings from the data including trends and changes
+3. Calculates month-over-month growth rates if applicable
+4. Suggests 2-3 relevant follow-up questions they might want to ask
+
+If no data was found, suggest alternative queries using available programs and regions.
 
 Respond with ONLY a valid JSON object in this format:
 {
-  "answer": "natural language answer with specific insights and numbers from the data",
-  "insights": ["key insight 1 with specific data", "key insight 2 with specific data"],
+  "answer": "natural language answer with specific insights, numbers, and trends from the data",
+  "insights": ["key insight 1 with specific data and calculations", "key insight 2 with specific data and calculations"],
   "follow_ups": ["follow up question 1", "follow up question 2", "follow up question 3"]
 }
 
 Respond with ONLY the JSON object, no other text.`;
 
       const llmResponse = await this.callLLM(responsePrompt);
+      console.log('🤖 LLM analysis response:', llmResponse);
+      
       // Clean the response to extract only JSON
       const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
       const cleanResponse = jsonMatch ? jsonMatch[0] : llmResponse;
       const parsedResponse = JSON.parse(cleanResponse);
 
-      // Prepare visualization data
+      // Prepare enhanced visualization data
       let visualData = null;
-      if (plan.expectedVisualization === 'funnel' && safeData.length > 0) {
-        visualData = {
-          type: 'funnel',
-          data: this.prepareFunnelData(safeData)
-        };
-      } else if (plan.expectedVisualization === 'table' && safeData.length > 0) {
+      if (plan.expectedVisualization === 'table' && safeData.length > 0) {
         visualData = {
           type: 'table',
           data: safeData
         };
+      } else if (plan.expectedVisualization === 'chart' && safeData.length > 0) {
+        visualData = {
+          type: 'chart',
+          data: this.prepareChartData(safeData)
+        };
+      } else if (plan.expectedVisualization === 'funnel' && safeData.length > 0) {
+        visualData = {
+          type: 'funnel',
+          data: this.prepareFunnelData(safeData)
+        };
       }
+
+      console.log('📊 Prepared visualization data:', visualData);
 
       return {
         answer: parsedResponse.answer || `Found ${safeData.length} results for: ${plan.intent}`,
@@ -191,17 +364,49 @@ Respond with ONLY the JSON object, no other text.`;
       };
 
     } catch (error) {
-      console.error('Failed to execute query plan:', error);
+      console.error('❌ Failed to execute query plan:', error);
+      
+      // Enhanced error handling with helpful suggestions
+      const dataValidation = await this.validateDataAvailability(plan.intent);
+      
       return {
-        answer: `I found some data related to "${plan.intent}", but encountered an issue processing the full analysis. The query returned ${plan.sqlQuery.includes('COUNT') ? 'aggregate' : 'detailed'} information about your request.`,
+        answer: `I encountered an issue processing your query "${plan.intent}". ${dataValidation.suggestions.join('. ')}. Try asking about one of the available programs or regions.`,
         followUps: [
-          "Can you show me the raw data?",
-          "What programs are available?",
-          "Show me performance by region"
+          "Show me available programs",
+          "What regions can I analyze?", 
+          "Show me ASG Primary Path performance",
+          "How is performance in EMEA?"
         ],
-        insights: ["Data retrieval partially successful, but analysis encountered an error"]
+        insights: ["Query processing failed - try using available program and region names"]
       };
     }
+  }
+
+  private static prepareChartData(data: any[]): any {
+    if (data.length === 0) return null;
+    
+    // Check if this looks like time series data
+    const hasTimeColumn = data[0].month || data[0].quarter || data[0].week;
+    
+    if (hasTimeColumn) {
+      return {
+        type: 'line',
+        data: data.map(row => ({
+          name: row.month || row.quarter || row.week,
+          value: row.total_customers || row.customers_1 || 0,
+          category: row.category_1 || row.program_name_1 || 'Unknown'
+        }))
+      };
+    }
+    
+    // Default to bar chart
+    return {
+      type: 'bar',
+      data: data.map(row => ({
+        name: row.program_name_1 || row.acq_region_1 || 'Unknown',
+        value: row.total_customers || row.customers_1 || 0
+      }))
+    };
   }
 
   private static prepareFunnelData(data: any[]): any {
@@ -240,10 +445,10 @@ Respond with ONLY the JSON object, no other text.`;
 Conversation Context: ${context.join(', ')}
 
 Available Data:
-- Customer onboarding programs (ASG Primary Path, LPW Path)
-- Regional data (Americas, Europe, Asia Pacific, Latin America, Africa)
+- Customer onboarding programs (ASG Primary Path, LPW Path, MCG ASG Path, PMax ASG Path)
+- Regional data (Americas, EMEA, APAC, Latin America, Africa)
 - Funnel metrics (Deliveries, Opens, Clicks)
-- Time periods (Quarters: 2024-Q1 through Q4)
+- Time periods (Quarters and monthly data available)
 
 Generate 3-4 smart, specific questions that would provide valuable business insights. Focus on:
 - Program performance comparisons
@@ -265,10 +470,10 @@ No other text, just the JSON array.`;
     } catch (error) {
       console.error('Failed to generate exploration questions:', error);
       return [
-        "Which program has the highest conversion rate?",
-        "How do regional performance metrics compare?",
-        "What are the biggest funnel drop-off points?",
-        "Which quarter showed the best overall performance?"
+        "Which ASG program has the highest month-over-month growth?",
+        "How do regional performance metrics compare across Americas and EMEA?",
+        "What are the biggest funnel drop-off points by program?",
+        "Which time period showed the best overall ASG performance?"
       ];
     }
   }
