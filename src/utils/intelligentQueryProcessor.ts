@@ -373,7 +373,7 @@ export class IntelligentQueryProcessor {
 
     return {
       answer,
-      data: funnel,
+      data: [funnel],
       visualData: {
         type: 'funnel',
         data: funnel
