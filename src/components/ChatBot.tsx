@@ -538,8 +538,12 @@ export default function ChatBot() {
                 }`}>
                   {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
-                <div className={`flex max-w-[95%] flex-col gap-3 ${
-                  message.type === 'user' ? 'items-end' : 'items-start'
+                <div className={`flex flex-col gap-3 ${
+                  message.type === 'user' 
+                    ? 'items-end max-w-[80%]' 
+                    : message.visualData 
+                      ? 'items-start w-full' 
+                      : 'items-start max-w-[85%]'
                 }`}>
                   <div className={`rounded-lg px-3 py-2 text-sm ${
                     message.type === 'user' 
@@ -551,7 +555,7 @@ export default function ChatBot() {
                   
                   {/* Visual Data Components */}
                   {message.visualData && (
-                    <div className="w-full max-w-4xl">
+                    <div className="w-full overflow-hidden">
                       {message.visualData.type === 'funnel' && (
                         <div className="space-y-4">
                           <FunnelVisualization 

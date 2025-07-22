@@ -45,9 +45,9 @@ export function FunnelComparison({ performance1, performance2, className = "" }:
   };
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-4 w-full overflow-hidden ${className}`}>
       {/* Visual Comparison */}
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <FunnelVisualization 
           data={p1} 
           title={performance1.name}
@@ -64,56 +64,56 @@ export function FunnelComparison({ performance1, performance2, className = "" }:
           <CardTitle className="text-sm font-medium">Side-by-Side Comparison</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="grid grid-cols-4 gap-4 text-xs font-medium text-muted-foreground border-b pb-2">
+          <div className="space-y-3 overflow-x-auto">
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs font-medium text-muted-foreground border-b pb-2 min-w-[300px]">
               <div>Metric</div>
-              <div className="text-center">{performance1.name}</div>
-              <div className="text-center">{performance2.name}</div>
+              <div className="text-center truncate">{performance1.name}</div>
+              <div className="text-center truncate">{performance2.name}</div>
               <div className="text-center">Difference</div>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 text-xs items-center">
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs items-center min-w-[300px]">
               <div className="font-medium">Deliveries</div>
-              <div className="text-center font-mono">{p1.deliveries.toLocaleString()}</div>
-              <div className="text-center font-mono">{p2.deliveries.toLocaleString()}</div>
+              <div className="text-center font-mono text-xs">{p1.deliveries.toLocaleString()}</div>
+              <div className="text-center font-mono text-xs">{p2.deliveries.toLocaleString()}</div>
               <div className="text-center">
                 {getMetricComparison(p1.deliveries, p2.deliveries, '')}
               </div>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 text-xs items-center">
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs items-center min-w-[300px]">
               <div className="font-medium">Open Rate</div>
               <div className="text-center">
-                <Badge variant="secondary">{p1.openRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p1.openRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
-                <Badge variant="secondary">{p2.openRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p2.openRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
                 {getMetricComparison(p1.openRate, p2.openRate)}
               </div>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 text-xs items-center">
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs items-center min-w-[300px]">
               <div className="font-medium">Click Through Rate</div>
               <div className="text-center">
-                <Badge variant="secondary">{p1.clickThroughRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p1.clickThroughRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
-                <Badge variant="secondary">{p2.clickThroughRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p2.clickThroughRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
                 {getMetricComparison(p1.clickThroughRate, p2.clickThroughRate)}
               </div>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 text-xs items-center">
+            <div className="grid grid-cols-4 gap-2 md:gap-4 text-xs items-center min-w-[300px]">
               <div className="font-medium">Click Through Open Rate</div>
               <div className="text-center">
-                <Badge variant="secondary">{p1.clickThroughOpenRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p1.clickThroughOpenRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
-                <Badge variant="secondary">{p2.clickThroughOpenRate.toFixed(1)}%</Badge>
+                <Badge variant="secondary" className="text-xs">{p2.clickThroughOpenRate.toFixed(1)}%</Badge>
               </div>
               <div className="text-center">
                 {getMetricComparison(p1.clickThroughOpenRate, p2.clickThroughOpenRate)}
