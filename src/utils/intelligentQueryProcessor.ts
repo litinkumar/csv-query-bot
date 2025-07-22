@@ -134,7 +134,7 @@ export class IntelligentQueryProcessor {
 
   private static async handleLessonsQuery(intent: QueryIntent, originalQuery: string) {
     let query = supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('lesson_name_1, program_name_1')
       .not('lesson_name_1', 'is', null);
 
@@ -190,7 +190,7 @@ export class IntelligentQueryProcessor {
 
   private static async handleProgramsQuery(intent: QueryIntent, originalQuery: string) {
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('program_name_1')
       .not('program_name_1', 'is', null);
 
@@ -231,7 +231,7 @@ export class IntelligentQueryProcessor {
 
   private static async handleRegionsQuery(intent: QueryIntent, originalQuery: string) {
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('acq_region_1, customers_1')
       .not('acq_region_1', 'is', null);
 
@@ -285,7 +285,7 @@ export class IntelligentQueryProcessor {
 
   private static async handleCustomersQuery(intent: QueryIntent, originalQuery: string) {
     let query = supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('customers_1, category_1, acq_region_1, program_name_1');
 
     // Apply filters
@@ -332,7 +332,7 @@ export class IntelligentQueryProcessor {
   private static async handlePerformanceQuery(intent: QueryIntent, originalQuery: string) {
     // For performance queries, we can still use some funnel logic but make it more intelligent
     let query = supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('*');
 
     if (intent.filters.program) {

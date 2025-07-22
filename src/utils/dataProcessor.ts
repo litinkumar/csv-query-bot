@@ -32,7 +32,7 @@ export class DataProcessor {
     const column = this.mapDimensionToColumn(dimension);
     
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select(`${column}, category_1, customers_1`)
       .not(column, 'is', null);
 
@@ -63,7 +63,7 @@ export class DataProcessor {
 
   private static async processGeographicQuery(queryContext: QueryContext): Promise<ProcessedData> {
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('acq_region_1, country_code_1, category_1, customers_1')
       .not('acq_region_1', 'is', null);
 
@@ -93,7 +93,7 @@ export class DataProcessor {
 
   private static async processTrendQuery(queryContext: QueryContext): Promise<ProcessedData> {
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('send_date_quarter_1, send_date_week_1, category_1, customers_1')
       .not('send_date_quarter_1', 'is', null)
       .order('send_date_quarter_1');
@@ -124,7 +124,7 @@ export class DataProcessor {
 
   private static async processCampaignQuery(queryContext: QueryContext): Promise<ProcessedData> {
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('*')
       .not('campaign_id_1', 'is', null);
 
@@ -155,7 +155,7 @@ export class DataProcessor {
   private static async processGeneralQuery(queryContext: QueryContext, originalQuery: string): Promise<ProcessedData> {
     // Fallback to a general data overview
     const { data, error } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('*')
       .limit(1000);
 

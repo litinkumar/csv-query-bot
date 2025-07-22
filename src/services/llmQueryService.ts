@@ -36,7 +36,7 @@ export class LLMQueryService {
   static async analyzeQuery(query: string, availableData?: any): Promise<QueryPlan> {
     const schemaInfo = `
 Available data schema:
-- Table: "Onboarding_Dunmmy_Data" (IMPORTANT: Always use double quotes around this table name in SQL queries)
+- Table: "sample_engagement_data" (IMPORTANT: Always use double quotes around this table name in SQL queries)
 - Columns: customers_1, campaign_id_1, lesson_number_1, funnel_order_1, spend_tier_grouped_1, assignment_status_1, category_1, lesson_name_1, program_name_1, primary_product_1, send_date_quarter_1, send_date_week_1, send_date_1, acq_region_1, country_code_1, language_1
 - Programs: ASG Primary Path, LPW Path, MCG ASG Path, PMax ASG Path
 - Regions: Americas, EMEA, APAC
@@ -61,9 +61,9 @@ You must respond with ONLY a valid JSON object in this exact format:
 }
 
 CRITICAL SQL RULES:
-- ALWAYS use double quotes around the table name: "Onboarding_Dunmmy_Data"
-- Never write: FROM Onboarding_Dunmmy_Data
-- Always write: FROM "Onboarding_Dunmmy_Data"
+- ALWAYS use double quotes around the table name: "sample_engagement_data"
+- Never write: FROM sample_engagement_data
+- Always write: FROM "sample_engagement_data"
 - Use proper SQL aggregation functions (SUM, COUNT, etc.)
 - Map region synonyms: "US" -> "Americas", "America" -> "Americas", "Europe" -> "EMEA", "Asia" -> "APAC"
 - Map program variations: "ASG Primary", "ASG" -> "ASG Primary Path"
@@ -73,8 +73,8 @@ CRITICAL SQL RULES:
 - Use table for lists and breakdowns
 
 Example SQL patterns:
-- SELECT category_1, SUM(customers_1) as total FROM "Onboarding_Dunmmy_Data" WHERE program_name_1 = 'ASG Primary Path' GROUP BY category_1
-- SELECT * FROM "Onboarding_Dunmmy_Data" WHERE acq_region_1 = 'Americas' LIMIT 10
+- SELECT category_1, SUM(customers_1) as total FROM "sample_engagement_data" WHERE program_name_1 = 'ASG Primary Path' GROUP BY category_1
+- SELECT * FROM "sample_engagement_data" WHERE acq_region_1 = 'Americas' LIMIT 10
 
 Respond with ONLY the JSON object, no other text.`;
 
@@ -86,9 +86,9 @@ Respond with ONLY the JSON object, no other text.`;
       const parsedPlan = JSON.parse(cleanResponse);
       
       // Double-check that the SQL query has proper table name quoting
-      if (parsedPlan.sqlQuery && !parsedPlan.sqlQuery.includes('"Onboarding_Dunmmy_Data"')) {
+      if (parsedPlan.sqlQuery && !parsedPlan.sqlQuery.includes('"sample_engagement_data"')) {
         console.warn('SQL query missing proper table name quoting, fixing...');
-        parsedPlan.sqlQuery = parsedPlan.sqlQuery.replace(/FROM\s+Onboarding_Dunmmy_Data/gi, 'FROM "Onboarding_Dunmmy_Data"');
+        parsedPlan.sqlQuery = parsedPlan.sqlQuery.replace(/FROM\s+sample_engagement_data/gi, 'FROM "sample_engagement_data"');
       }
       
       return parsedPlan;
@@ -99,7 +99,7 @@ Respond with ONLY the JSON object, no other text.`;
         intent: `Find information about: ${query}`,
         entities: [query],
         filters: {},
-        sqlQuery: 'SELECT * FROM "Onboarding_Dunmmy_Data" LIMIT 10',
+        sqlQuery: 'SELECT * FROM "sample_engagement_data" LIMIT 10',
         expectedVisualization: "table" as const,
         explanation: "Showing sample data due to query analysis error"
       };

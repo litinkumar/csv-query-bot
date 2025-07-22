@@ -76,7 +76,7 @@ export class QueryAnalyzer {
     
     // Try to find program names
     const { data: programs } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('program_name_1')
       .not('program_name_1', 'is', null)
       .limit(100);
@@ -92,7 +92,7 @@ export class QueryAnalyzer {
 
     // Try to find lesson names
     const { data: lessons } = await supabase
-      .from('Onboarding_Dunmmy_Data')
+      .from('sample_engagement_data')
       .select('lesson_name_1')
       .not('lesson_name_1', 'is', null)
       .limit(100);

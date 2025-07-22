@@ -71,6 +71,63 @@ export type Database = {
         }
         Relationships: []
       }
+      sample_engagement_data: {
+        Row: {
+          acq_region_1: string | null
+          assignment_status_1: string | null
+          campaign_id_1: number | null
+          category_1: string | null
+          country_code_1: string | null
+          customers_1: number | null
+          funnel_order_1: number | null
+          language_1: string | null
+          lesson_name_1: string | null
+          lesson_number_1: number | null
+          primary_product_1: string | null
+          program_name_1: string | null
+          send_date_1: string | null
+          send_date_quarter_1: string | null
+          send_date_week_1: string | null
+          spend_tier_grouped_1: string | null
+        }
+        Insert: {
+          acq_region_1?: string | null
+          assignment_status_1?: string | null
+          campaign_id_1?: number | null
+          category_1?: string | null
+          country_code_1?: string | null
+          customers_1?: number | null
+          funnel_order_1?: number | null
+          language_1?: string | null
+          lesson_name_1?: string | null
+          lesson_number_1?: number | null
+          primary_product_1?: string | null
+          program_name_1?: string | null
+          send_date_1?: string | null
+          send_date_quarter_1?: string | null
+          send_date_week_1?: string | null
+          spend_tier_grouped_1?: string | null
+        }
+        Update: {
+          acq_region_1?: string | null
+          assignment_status_1?: string | null
+          campaign_id_1?: number | null
+          category_1?: string | null
+          country_code_1?: string | null
+          customers_1?: number | null
+          funnel_order_1?: number | null
+          language_1?: string | null
+          lesson_name_1?: string | null
+          lesson_number_1?: number | null
+          primary_product_1?: string | null
+          program_name_1?: string | null
+          send_date_1?: string | null
+          send_date_quarter_1?: string | null
+          send_date_week_1?: string | null
+          spend_tier_grouped_1?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
