@@ -301,33 +301,34 @@ Respond with ONLY the JSON object, no other text.`;
       const safeData = Array.isArray(actualData) ? actualData : [];
       console.log('📋 Safe data array:', safeData, 'Length:', safeData.length);
 
-      // Enhanced response generation with better context
-      const responsePrompt = `You are a helpful data analyst powered by Google Gemini. Based on the following query results, provide insights and analysis.
+      // Enhanced response generation focused on data-driven insights
+      const responsePrompt = `You are a precise data analyst. Your ONLY job is to extract factual insights from the provided data.
 
 Original Query Intent: "${plan.intent}"
 SQL Query Executed: "${plan.sqlQuery}"
 Data Results (showing first 10 rows): ${JSON.stringify(safeData.slice(0, 10))}
 Total Records Found: ${safeData.length}
 
-ANALYSIS GUIDELINES:
-- If this is month-over-month data, identify trends and percentage changes
-- For ASG program analysis, compare performance across different ASG programs
-- For regional analysis, provide geographic insights
-- Calculate rates and conversions where applicable
-- Highlight significant patterns or anomalies
+STRICT REQUIREMENTS FOR INSIGHTS:
+- Every insight MUST reference specific numbers from the data
+- Every insight MUST be based solely on the data provided above
+- Include actual values, percentages, ratios, and calculations
+- Do NOT make assumptions beyond what the data shows
+- Do NOT provide general advice or context not in the data
+- Focus on quantifiable findings only
 
-Provide a natural language response that:
-1. Directly answers the user's question with specific numbers and insights
-2. Highlights the most important findings from the data including trends and changes
-3. Calculates month-over-month growth rates if applicable
-4. Suggests 2-3 relevant follow-up questions they might want to ask
+REQUIRED INSIGHT STRUCTURE:
+- For performance data: Include specific metrics like delivery rates, open rates, click rates
+- For comparisons: Include exact numerical differences and percentage changes  
+- For trends: Include specific growth/decline percentages between periods
+- For rankings: Include actual values and relative positions
 
-If no data was found, suggest alternative queries using available programs and regions.
+If no data was found, insights should state "No data available for the requested query parameters."
 
 Respond with ONLY a valid JSON object in this format:
 {
-  "answer": "natural language answer with specific insights, numbers, and trends from the data",
-  "insights": ["key insight 1 with specific data and calculations", "key insight 2 with specific data and calculations"],
+  "answer": "brief data summary",
+  "insights": ["insight with specific number/percentage from data", "insight with specific calculation/comparison from data", "insight with specific metric/trend from data"],
   "follow_ups": ["follow up question 1", "follow up question 2", "follow up question 3"]
 }
 

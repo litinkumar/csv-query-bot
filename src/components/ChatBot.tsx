@@ -57,17 +57,14 @@ export default function ChatBot() {
       const smartSuggestions = await generateSmartSuggestions();
       const combinedFollowUps = [...new Set([...result.followUps, ...smartSuggestions])].slice(0, 3);
       
-      // Step 5: Prepare response with insights
-      let response = result.answer;
+      // Step 5: Prepare response with only Key Insights
+      let response = '';
       
       if (result.insights && result.insights.length > 0) {
-        response += `\n\n**Key Insights:**\n`;
+        response = `**Key Insights:**\n`;
         response += result.insights.map(insight => `• ${insight}`).join('\n');
-      }
-      
-      if (combinedFollowUps.length > 0) {
-        response += `\n\n**You might also want to ask:**\n`;
-        response += combinedFollowUps.map(followUp => `• "${followUp}"`).join('\n');
+      } else {
+        response = '**Key Insights:**\n• No specific insights could be extracted from the available data.';
       }
       
       // Return with visualization if available
