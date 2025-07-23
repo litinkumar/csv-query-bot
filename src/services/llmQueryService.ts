@@ -172,6 +172,18 @@ CRITICAL QUERY ANALYSIS RULES:
 4. Always validate that requested entities exist in the available data above
 5. If requested data doesn't exist, suggest alternative queries using available data
 
+VISUALIZATION SELECTION RULES:
+- Use "funnel" for queries about program performance, conversion analysis, or customer journey stages
+- Use "chart" for trend analysis over time (month-over-month, quarterly trends)
+- Use "table" for detailed breakdowns and multi-dimensional analysis
+- Use "text" for summary or explanatory responses
+
+FUNNEL VISUALIZATION CRITERIA:
+- When query asks about program performance (e.g., "How did [Program] perform", "ASG performance", "program effectiveness")
+- When data includes category_1 column with values like 'Deliveries', 'Opens', 'Clicks', 'Adoptions'
+- When analyzing conversion rates or customer journey stages
+- When comparing program effectiveness
+
 You must respond with ONLY a valid JSON object in this exact format:
 {
   "intent": "brief description of what user wants",
@@ -188,8 +200,7 @@ CRITICAL SQL RULES:
 - For Americas queries, use: WHERE acq_region_1 = 'Americas'
 - For month-over-month: GROUP BY DATE_TRUNC('month', send_date_1::date), other_columns
 - Use proper SQL aggregation functions (SUM, COUNT, etc.)
-- Use table visualization for time-series and comparison data
-- Prefer chart visualization for trend analysis
+- For performance queries, include category_1 in SELECT and GROUP BY to enable funnel visualization
 
 EXAMPLE FOR ASG AMERICAS MONTH-OVER-MONTH:
 SELECT 
@@ -330,19 +341,32 @@ Respond with ONLY the JSON object, no other text.`;
       const cleanResponse = jsonMatch ? jsonMatch[0] : llmResponse;
       const parsedResponse = JSON.parse(cleanResponse);
 
-      // Prepare enhanced visualization data
+      // Prepare enhanced visualization data with auto-detection
       let visualData = null;
-      if (plan.expectedVisualization === 'table' && safeData.length > 0) {
+      
+      // Auto-detect funnel if data contains category_1 with funnel stages
+      const hasFunnelData = safeData.some(row => {
+        const category = row.category_1?.toLowerCase() || '';
+        return category.includes('deliver') || category.includes('open') || 
+               category.includes('click') || category.includes('adopt');
+      });
+      
+      // Override visualization type if funnel data is detected
+      const actualVisualization = hasFunnelData && plan.expectedVisualization === 'table' 
+        ? 'funnel' 
+        : plan.expectedVisualization;
+      
+      if (actualVisualization === 'table' && safeData.length > 0) {
         visualData = {
           type: 'table',
           data: safeData
         };
-      } else if (plan.expectedVisualization === 'chart' && safeData.length > 0) {
+      } else if (actualVisualization === 'chart' && safeData.length > 0) {
         visualData = {
           type: 'chart',
           data: this.prepareChartData(safeData)
         };
-      } else if (plan.expectedVisualization === 'funnel' && safeData.length > 0) {
+      } else if (actualVisualization === 'funnel' && safeData.length > 0) {
         visualData = {
           type: 'funnel',
           data: this.prepareFunnelData(safeData)
