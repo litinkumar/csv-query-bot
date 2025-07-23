@@ -411,7 +411,7 @@ Respond with ONLY the JSON object, no other text.`;
 
   private static prepareFunnelData(data: any[]): any {
     // Convert query results to funnel format
-    const funnelData = { deliveries: 0, opens: 0, clicks: 0 };
+    const funnelData = { deliveries: 0, opens: 0, clicks: 0, adoptions: 0 };
     
     data.forEach(row => {
       const category = row.category_1?.toLowerCase() || '';
@@ -423,19 +423,23 @@ Respond with ONLY the JSON object, no other text.`;
         funnelData.opens += customers;
       } else if (category.includes('click')) {
         funnelData.clicks += customers;
+      } else if (category.includes('adopt') || category.includes('conversion') || category.includes('complete')) {
+        funnelData.adoptions += customers;
       }
     });
 
-    // Calculate rates
+    // Calculate rates according to user requirements
     const openRate = funnelData.deliveries > 0 ? (funnelData.opens / funnelData.deliveries) * 100 : 0;
-    const clickThroughRate = funnelData.deliveries > 0 ? (funnelData.clicks / funnelData.deliveries) * 100 : 0;
+    const clickRate = funnelData.deliveries > 0 ? (funnelData.clicks / funnelData.deliveries) * 100 : 0;
     const clickThroughOpenRate = funnelData.opens > 0 ? (funnelData.clicks / funnelData.opens) * 100 : 0;
+    const adoptionRate = funnelData.clicks > 0 ? (funnelData.adoptions / funnelData.clicks) * 100 : 0;
 
     return {
       ...funnelData,
       openRate,
-      clickThroughRate,
-      clickThroughOpenRate
+      clickRate,
+      clickThroughOpenRate,
+      adoptionRate
     };
   }
 
