@@ -147,10 +147,10 @@ ACTUAL PROGRAM VALUES IN DATABASE: ${dataValidation.availablePrograms.join(', ')
 ACTUAL TIME PERIODS IN DATABASE: ${dataValidation.availableTimeRanges.join(', ')}
 
 IMPORTANT FUNNEL CATEGORY VALUES IN category_1:
-- delivered: Email delivery count
-- opened: Email open count  
-- clicked: Email click count
-- adopted: Adoption/conversion count
+- Deliveries: Email delivery count
+- Opens: Email open count  
+- Clicks: Email click count
+- Adoptions: Adoption/conversion count
 
 CRITICAL: For dimensional breakdowns, create a query that uses PIVOT logic to show each dimension value with its complete funnel metrics.
 `;
@@ -168,10 +168,10 @@ For dimensional breakdowns, create a query that returns separate funnel metrics 
 
 SELECT 
   [dimension_column] as dimension_value,
-  SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries,
-  SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens,
-  SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks,
-  SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions
+  SUM(CASE WHEN category_1 = 'Deliveries' THEN customers_1 ELSE 0 END) as deliveries,
+  SUM(CASE WHEN category_1 = 'Opens' THEN customers_1 ELSE 0 END) as opens,
+  SUM(CASE WHEN category_1 = 'Clicks' THEN customers_1 ELSE 0 END) as clicks,
+  SUM(CASE WHEN category_1 = 'Adoptions' THEN customers_1 ELSE 0 END) as adoptions
 FROM "sample_engagement_data" 
 WHERE [your filters here]
 GROUP BY [dimension_column]
@@ -203,10 +203,10 @@ ${schemaInfo}
 
 Create a query that aggregates all funnel stages using this template:
 SELECT 
-  SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries,
-  SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens,
-  SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks,
-  SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions
+  SUM(CASE WHEN category_1 = 'Deliveries' THEN customers_1 ELSE 0 END) as deliveries,
+  SUM(CASE WHEN category_1 = 'Opens' THEN customers_1 ELSE 0 END) as opens,
+  SUM(CASE WHEN category_1 = 'Clicks' THEN customers_1 ELSE 0 END) as clicks,
+  SUM(CASE WHEN category_1 = 'Adoptions' THEN customers_1 ELSE 0 END) as adoptions
 FROM "sample_engagement_data" 
 WHERE [your filters here]
 
@@ -243,7 +243,7 @@ Respond with ONLY a valid JSON object:
         intent: `Funnel analysis for: ${query}`,
         entities: ['ASG', 'Americas'],
         filters: { program: 'ASG', region: 'Americas' },
-        sqlQuery: `SELECT SUM(CASE WHEN category_1 = 'delivered' THEN customers_1 ELSE 0 END) as deliveries, SUM(CASE WHEN category_1 = 'opened' THEN customers_1 ELSE 0 END) as opens, SUM(CASE WHEN category_1 = 'clicked' THEN customers_1 ELSE 0 END) as clicks, SUM(CASE WHEN category_1 = 'adopted' THEN customers_1 ELSE 0 END) as adoptions FROM "sample_engagement_data" WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') AND acq_region_1 = 'Americas'`,
+        sqlQuery: `SELECT SUM(CASE WHEN category_1 = 'Deliveries' THEN customers_1 ELSE 0 END) as deliveries, SUM(CASE WHEN category_1 = 'Opens' THEN customers_1 ELSE 0 END) as opens, SUM(CASE WHEN category_1 = 'Clicks' THEN customers_1 ELSE 0 END) as clicks, SUM(CASE WHEN category_1 = 'Adoptions' THEN customers_1 ELSE 0 END) as adoptions FROM "sample_engagement_data" WHERE program_name_1 IN ('ASG Primary Path', 'MCG ASG Path', 'PMax ASG Path') AND acq_region_1 = 'Americas'`,
         expectedVisualization: "funnel" as const,
         explanation: "Fallback: Showing ASG funnel metrics in Americas"
       };
