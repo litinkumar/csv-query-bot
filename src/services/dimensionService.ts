@@ -73,7 +73,35 @@ export class DimensionService {
     if (value) {
       return `${originalQuery} for ${dimensionLabel} ${value}`;
     } else {
-      return `${originalQuery} broken down by ${dimensionLabel}`;
+      // For dimensional breakdowns, remove conflicting filters from the original query
+      let cleanedQuery = originalQuery;
+      
+      // Remove region-specific filters when breaking down by region
+      if (dimension === 'acq_region_1') {
+        cleanedQuery = cleanedQuery
+          .replace(/\s+in\s+(Americas|APAC|EMEA)/gi, '')
+          .replace(/\s+for\s+(Americas|APAC|EMEA)/gi, '')
+          .replace(/\s+(Americas|APAC|EMEA)\s+/gi, ' ');
+      }
+      
+      // Remove spend tier filters when breaking down by spend tier
+      if (dimension === 'spend_tier_grouped_1') {
+        cleanedQuery = cleanedQuery
+          .replace(/\s+for\s+(Head|Torso|Tail|Longtail)\s+tier/gi, '')
+          .replace(/\s+(Head|Torso|Tail|Longtail)\s+tier/gi, '');
+      }
+      
+      // Remove program filters when breaking down by program
+      if (dimension === 'program_name_1') {
+        cleanedQuery = cleanedQuery
+          .replace(/\s+for\s+(ASG|MCG|PMax)/gi, '')
+          .replace(/\s+(ASG|MCG|PMax)\s+/gi, ' ');
+      }
+      
+      // Clean up any double spaces
+      cleanedQuery = cleanedQuery.replace(/\s+/g, ' ').trim();
+      
+      return `${cleanedQuery} broken down by ${dimensionLabel}`;
     }
   }
 }

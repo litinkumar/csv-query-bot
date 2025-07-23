@@ -153,6 +153,12 @@ IMPORTANT FUNNEL CATEGORY VALUES IN category_1:
 - Adoptions: Adoption/conversion count
 
 CRITICAL: For dimensional breakdowns, create a query that uses PIVOT logic to show each dimension value with its complete funnel metrics.
+
+IMPORTANT: When breaking down by a dimension (e.g., "broken down by region"), IGNORE any conflicting filters in the query:
+- If breaking down by region, ignore any region-specific filters and show ALL regions
+- If breaking down by spend tier, ignore any tier-specific filters and show ALL tiers  
+- If breaking down by program, ignore any program-specific filters and show ALL programs
+This ensures users see complete dimensional breakdowns, not filtered subsets.
 `;
 
     let prompt = '';
