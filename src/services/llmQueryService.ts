@@ -370,7 +370,7 @@ Respond with ONLY the JSON object, no other text.`;
       } else if (actualVisualization === 'funnel' && safeData.length > 0) {
         visualData = {
           type: 'funnel',
-          data: this.prepareFunnelData(safeData)
+          data: this.prepareFunnelData(safeData, plan.intent)
         };
       }
 
@@ -434,11 +434,31 @@ Respond with ONLY the JSON object, no other text.`;
     };
   }
 
-  private static prepareFunnelData(data: any[]): any {
+  private static prepareFunnelData(data: any[], queryIntent?: string): any {
     // Convert query results to funnel format
     const funnelData = { deliveries: 0, opens: 0, clicks: 0, adoptions: 0 };
     
-    data.forEach(row => {
+    // Filter data based on query intent to match LLM analysis scope
+    let filteredData = data;
+    if (queryIntent) {
+      const intent = queryIntent.toLowerCase();
+      
+      // If query specifically mentions "ASG Primary Path", only include that program
+      if (intent.includes('asg primary path') && !intent.includes('all asg') && !intent.includes('asg programs')) {
+        filteredData = data.filter(row => row.program_name_1 === 'ASG Primary Path');
+      }
+      // If query specifically mentions "MCG ASG", only include that program  
+      else if (intent.includes('mcg asg') && !intent.includes('all asg') && !intent.includes('asg programs')) {
+        filteredData = data.filter(row => row.program_name_1 === 'MCG ASG Path');
+      }
+      // If query specifically mentions "PMax ASG", only include that program
+      else if (intent.includes('pmax asg') && !intent.includes('all asg') && !intent.includes('asg programs')) {
+        filteredData = data.filter(row => row.program_name_1 === 'PMax ASG Path');
+      }
+      // Otherwise, use all data (for general ASG queries or comparisons)
+    }
+    
+    filteredData.forEach(row => {
       const category = row.category_1?.toLowerCase() || '';
       const customers = row.total_customers || row.customers_1 || 0;
       
