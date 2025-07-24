@@ -317,6 +317,14 @@ STRICT REQUIREMENTS FOR INSIGHTS:
 - Do NOT provide general advice or context not in the data
 - Focus on quantifiable findings only
 
+CRITICAL CALCULATION RULES:
+- When calculating percentages, ALWAYS show your work: (numerator/denominator) * 100
+- For click rate: (Clicks/Deliveries) * 100 = X.XX%
+- For open rate: (Opens/Deliveries) * 100 = X.XX%
+- For adoption rate: (Adoptions/Clicks) * 100 = X.XX%
+- DOUBLE-CHECK all percentage calculations before including them
+- Round percentages to 2 decimal places
+
 REQUIRED INSIGHT STRUCTURE:
 - For performance data: Include specific metrics like delivery rates, open rates, click rates
 - For comparisons: Include exact numerical differences and percentage changes  
