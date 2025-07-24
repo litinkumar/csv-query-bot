@@ -2,17 +2,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, TrendingUp, Users, BarChart3 } from "lucide-react";
+import { Send, Bot, User } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { FunnelVisualization } from "./FunnelVisualization";
 import { DataTable } from "./DataTable";
-import { QuarterlyTimeSeriesChart } from "./QuarterlyTimeSeriesChart";
-import { AssignmentStatusPieChart } from "./AssignmentStatusPieChart";
-import { RegionalBarChart } from "./RegionalBarChart";
 import { LLMQueryService } from "../services/llmQueryService";
 import { useEnhancedMemory } from "../hooks/useEnhancedMemory";
-import { DeepDiveService, DeepDiveOption } from "../services/deepDiveService";
-import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
@@ -20,10 +15,9 @@ interface Message {
   content: string;
   timestamp: Date;
   visualData?: {
-    type: 'funnel' | 'table' | 'chart' | 'quarterly' | 'assignment' | 'regional';
+    type: 'funnel' | 'table' | 'chart';
     data: any;
   };
-  deepDiveOptions?: DeepDiveOption[];
 }
 
 export default function ChatBot() {
@@ -40,7 +34,7 @@ export default function ChatBot() {
   
   const { addQueryToMemory, generateSmartSuggestions, getRelevantContext } = useEnhancedMemory();
 
-  const processIntelligentQuery = async (query: string): Promise<string | { text: string; visualData?: any; deepDiveOptions?: DeepDiveOption[] }> => {
+  const processIntelligentQuery = async (query: string): Promise<string | { text: string; visualData?: any }> => {
     try {
       console.log('Processing intelligent query with LLM:', query);
       
@@ -63,10 +57,7 @@ export default function ChatBot() {
       const smartSuggestions = await generateSmartSuggestions();
       const combinedFollowUps = [...new Set([...result.followUps, ...smartSuggestions])].slice(0, 3);
       
-      // Step 5: Use deep dive options from the service result
-      const deepDiveOptions = result.deepDiveOptions || [];
-
-      // Step 6: Prepare response with only Key Insights
+      // Step 5: Prepare response with only Key Insights
       let response = '';
       
       if (result.insights && result.insights.length > 0) {
@@ -76,19 +67,15 @@ export default function ChatBot() {
         response = '**Key Insights:**\n• No specific insights could be extracted from the available data.';
       }
       
-      // Return with visualization and deep dive options if available
+      // Return with visualization if available
       if (result.visualData) {
         return {
           text: response,
-          visualData: result.visualData,
-          deepDiveOptions
+          visualData: result.visualData
         };
       }
       
-      return {
-        text: response,
-        deepDiveOptions
-      };
+      return response;
       
     } catch (error) {
       console.error('Error processing intelligent query:', error);
@@ -129,14 +116,13 @@ export default function ChatBot() {
       
       let botMessage: Message;
       
-      if (typeof botResponse === 'object' && botResponse.text) {
+      if (typeof botResponse === 'object' && botResponse.text && botResponse.visualData) {
         botMessage = {
           id: (Date.now() + 1).toString(),
           type: 'bot',
           content: botResponse.text,
           timestamp: new Date(),
-          visualData: botResponse.visualData,
-          deepDiveOptions: botResponse.deepDiveOptions
+          visualData: botResponse.visualData
         };
       } else {
         botMessage = {
@@ -164,118 +150,6 @@ export default function ChatBot() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
-    }
-  };
-
-  const handleDeepDive = async (option: DeepDiveOption, originalQuery: string) => {
-    setIsLoading(true);
-    
-    try {
-      // Generate appropriate SQL based on deep dive type
-      const originalPlan = await LLMQueryService.analyzeQuery(originalQuery);
-      let sql = '';
-      
-      switch (option.type) {
-        case 'quarterly':
-          sql = DeepDiveService.generateQuarterlySQL(originalPlan.entities);
-          break;
-        case 'assignment':
-          sql = DeepDiveService.generateAssignmentSQL(originalPlan.entities);
-          break;
-        case 'regional':
-          sql = DeepDiveService.generateRegionalSQL(originalPlan.entities);
-          break;
-      }
-
-      // Execute the query
-      const { data, error } = await supabase.rpc('execute_safe_query', { query_text: sql });
-      
-      if (error) {
-        throw new Error(`Database error: ${error.message}`);
-      }
-
-      // Process data for visualization
-      let processedData: any = data;
-      let visualType = option.type;
-
-      if (option.type === 'assignment' && Array.isArray(data)) {
-        // Transform assignment data for pie chart with drill-down
-        const assignmentStats = data.reduce((acc: any, row: any) => {
-          const status = row.assignment_status || 'Unknown';
-          const tier = row.spend_tier || 'Unknown';
-          const count = parseInt(row.count) || 0;
-
-          if (!acc[status]) {
-            acc[status] = { name: status, value: 0, spendTiers: {} };
-          }
-          
-          acc[status].value += count;
-          
-          if (!acc[status].spendTiers[tier]) {
-            acc[status].spendTiers[tier] = { name: tier, value: 0 };
-          }
-          acc[status].spendTiers[tier].value += count;
-
-          return acc;
-        }, {});
-
-        const total = Object.values(assignmentStats).reduce((sum: number, item: any) => {
-          const itemValue = Number(item.value) || 0;
-          return sum + itemValue;
-        }, 0);
-        
-        processedData = Object.values(assignmentStats).map((item: any) => {
-          const itemValue: number = Number(item.value) || 0;
-          const totalNum: number = Number(total) || 0;
-          
-          return {
-            name: item.name,
-            value: itemValue,
-            percentage: totalNum > 0 ? (itemValue / totalNum) * 100 : 0,
-            spendTiers: Object.values(item.spendTiers).map((tier: any) => {
-              const tierValue: number = Number(tier.value) || 0;
-              return {
-                name: tier.name,
-                value: tierValue,
-                percentage: itemValue > 0 ? (tierValue / itemValue) * 100 : 0
-              };
-            })
-          };
-        });
-      }
-
-      // Create deep dive message
-      const deepDiveMessage: Message = {
-        id: Date.now().toString(),
-        type: 'bot',
-        content: `**${option.title}**\n\n${option.description}`,
-        timestamp: new Date(),
-        visualData: {
-          type: visualType,
-          data: processedData
-        }
-      };
-
-      setMessages(prev => [...prev, deepDiveMessage]);
-
-    } catch (error) {
-      console.error('Deep dive error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to execute deep dive analysis. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getDeepDiveIcon = (type: string) => {
-    switch (type) {
-      case 'quarterly': return TrendingUp;
-      case 'assignment': return Users;
-      case 'regional': return BarChart3;
-      default: return TrendingUp;
     }
   };
 
@@ -324,46 +198,6 @@ export default function ChatBot() {
                           title="Query Results"
                         />
                       )}
-
-                      {message.visualData.type === 'quarterly' && (
-                        <QuarterlyTimeSeriesChart data={message.visualData.data} />
-                      )}
-
-                      {message.visualData.type === 'assignment' && (
-                        <AssignmentStatusPieChart data={message.visualData.data} />
-                      )}
-
-                      {message.visualData.type === 'regional' && (
-                        <RegionalBarChart data={message.visualData.data} />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Deep Dive Options */}
-                  {message.type === 'bot' && message.deepDiveOptions && message.deepDiveOptions.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {message.deepDiveOptions.map((option) => {
-                        const Icon = getDeepDiveIcon(option.type);
-                        return (
-                          <Button
-                            key={option.id}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              // Find the original user query for context
-                              const messageIndex = messages.findIndex(m => m.id === message.id);
-                              const userMessage = messageIndex > 0 ? messages[messageIndex - 1] : null;
-                              const originalQuery = userMessage?.type === 'user' ? userMessage.content : '';
-                              handleDeepDive(option, originalQuery);
-                            }}
-                            disabled={isLoading}
-                            className="text-xs"
-                          >
-                            <Icon className="h-3 w-3 mr-1" />
-                            {option.title}
-                          </Button>
-                        );
-                      })}
                     </div>
                   )}
                   
