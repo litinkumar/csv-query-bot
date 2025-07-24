@@ -15,6 +15,7 @@ export interface LLMQueryResult {
   visualData?: any;
   followUps: string[];
   insights: string[];
+  deepDiveOptions?: any[];
 }
 
 export class LLMQueryService {
@@ -342,6 +343,10 @@ Respond with ONLY the JSON object, no other text.`;
       const cleanResponse = jsonMatch ? jsonMatch[0] : llmResponse;
       const parsedResponse = JSON.parse(cleanResponse);
 
+      // Generate contextual deep dive options
+      const { DeepDiveService } = await import('./deepDiveService');
+      const deepDiveOptions = DeepDiveService.analyzeQueryContext(plan.intent, plan.entities, plan.intent);
+
       // Prepare enhanced visualization data with auto-detection
       let visualData = null;
       
@@ -385,7 +390,8 @@ Respond with ONLY the JSON object, no other text.`;
           "How does this compare to other segments?",
           "Show me more detailed breakdowns"
         ],
-        insights: parsedResponse.insights || [`Found ${safeData.length} records matching your criteria`]
+        insights: parsedResponse.insights || [`Found ${safeData.length} records matching your criteria`],
+        deepDiveOptions
       };
 
     } catch (error) {

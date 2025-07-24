@@ -63,8 +63,8 @@ export default function ChatBot() {
       const smartSuggestions = await generateSmartSuggestions();
       const combinedFollowUps = [...new Set([...result.followUps, ...smartSuggestions])].slice(0, 3);
       
-      // Step 5: Generate contextual deep dive options
-      const deepDiveOptions = DeepDiveService.analyzeQueryContext(query, queryPlan.entities, queryPlan.intent);
+      // Step 5: Use deep dive options from the service result
+      const deepDiveOptions = result.deepDiveOptions || [];
 
       // Step 6: Prepare response with only Key Insights
       let response = '';
