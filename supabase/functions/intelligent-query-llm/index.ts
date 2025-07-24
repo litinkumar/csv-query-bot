@@ -23,8 +23,8 @@ serve(async (req) => {
     console.log('🤖 Processing LLM request with Gemini, prompt length:', prompt.length);
     console.log('📝 First 500 chars of prompt:', prompt.substring(0, 500));
 
-    // Use Gemini 2.5 Flash for fast and cost-effective processing
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+    // Use Gemini 1.5 Flash for fast and cost-effective processing
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

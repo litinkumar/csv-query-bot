@@ -33,19 +33,11 @@ export function FunnelComparison({ performance1, performance2, className = "" }:
 
   const getMetricComparison = (val1: number, val2: number, suffix = '%') => {
     const diff = val1 - val2;
-    if (Math.abs(diff) < 0.1) return 'Even';
-
-    if (val2 === 0) {
-      return (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          N/A
-        </div>
-      );
-    }
-
     const isPositive = diff > 0;
     const absPercent = Math.abs((diff / val2) * 100);
-
+    
+    if (Math.abs(diff) < 0.1) return 'Even';
+    
     return (
       <div className={`flex items-center gap-1 text-xs ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
         <span>{isPositive ? '↗' : '↘'}</span>
