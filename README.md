@@ -60,6 +60,10 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Language model
+
+This project uses Google's **Gemini 2.5 Flash** model via a Supabase edge function. Set the `GEMINI_API_KEY` environment variable to connect to Gemini.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/eae257c4-22a7-4847-84cd-7d51ad39189d) and click on Share -> Publish.
